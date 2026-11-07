@@ -12,7 +12,7 @@ function make(id){
 }
 const doc={
   readyState:'loading',head:{appendChild(){}},body:{
-    prepend(node){for(const m of node.innerHTML.matchAll(/id="([^"]+)"/g))make(m[1]);},
+    prepend(node){el[node.id]=node;for(const m of node.innerHTML.matchAll(/id="([^"]+)"/g))make(m[1]);},
     appendChild(){}
   },
   documentElement:{classList:{add(){}}},
