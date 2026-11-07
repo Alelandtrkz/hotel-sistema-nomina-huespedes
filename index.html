@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#152523">
-  <meta name="description" content="Prototipo de gestión hotelera para Hotel Unicornio, El Coca, Ecuador.">
+  <meta name="description" content="Gestión hotelera de demostración: habitaciones, reservas, varios, inventario y cierre de caja para Hotel Unicornio, El Coca.">
   <title>Hotel Unicornio · Gestión de huéspedes</title>
   <link rel="stylesheet" href="./styles.css">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -25,7 +25,9 @@
         <button class="nav-item" data-view="ingreso" type="button"><span class="nav-icon">⇥</span><span>Registro / ingreso</span></button>
         <button class="nav-item" data-view="reservas" type="button"><span class="nav-icon">▤</span><span>Reservas</span></button>
         <button class="nav-item" data-view="salidas" type="button"><span class="nav-icon">⇤</span><span>Salidas y cobros</span></button>
-        <button class="nav-item" data-view="varios" type="button"><span class="nav-icon">◈</span><span>Varios / consumos</span></button>
+        <button class="nav-item" data-view="varios" type="button"><span class="nav-icon">◈</span><span>Varios / ventas</span></button>
+        <button class="nav-item" data-view="inventario" type="button"><span class="nav-icon">▣</span><span>Inventario de varios</span></button>
+        <button class="nav-item" data-view="caja" type="button"><span class="nav-icon">▤</span><span>Cierre de caja</span></button>
       </nav>
       <div class="sidebar-section-label gap-top">ADMINISTRACIÓN</div>
       <nav class="nav-items">
@@ -51,7 +53,7 @@
           <span class="avatar" title="Recepción">R</span>
         </div>
       </header>
-      <div class="notice" role="note"><span class="notice-icon">!</span><span><strong>Versión de prueba.</strong> Utilice únicamente datos ficticios. La información se almacena en este navegador; no hay inicio de sesión, base de datos ni facturación electrónica.</span><button id="dismiss-notice" class="notice-dismiss" aria-label="Cerrar aviso" type="button">×</button></div>
+      <div class="notice" role="note"><span class="notice-icon">!</span><span><strong>Versión de prueba.</strong> Utilice únicamente datos ficticios. La información se guarda únicamente en este navegador; no hay acceso de empleados, base de datos central ni facturación electrónica. No utilice información personal real.</span><button id="dismiss-notice" class="notice-dismiss" aria-label="Cerrar aviso" type="button">×</button></div>
       <main id="app-view" class="workspace" tabindex="-1" aria-live="polite"></main>
     </div>
   </div>
