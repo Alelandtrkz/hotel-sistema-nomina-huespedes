@@ -1,3 +1,23 @@
+# Hotel Unicornio v0.7 — un cliente con varias habitaciones
+
+La ficha de **Registro / ingreso** permite contratar varias habitaciones a nombre de un solo cliente, por ejemplo habitación 02 y habitación 03 para una familia. El titular se guarda **una sola vez** en `hotel_guests`, y cada habitación recibe una estadía independiente dentro del estado compartido de Supabase. Cada habitación ocupada solo puede tener **una estadía/titular activo** a la vez.
+
+### Funcionamiento
+- En el apartado **02 · Detalles de alojamiento**, elija la habitación principal y pulse **Agregar otra habitación** para añadir una o varias. Cada fila permite elegir categoría, desayuno y número de habitación disponible. Puede quitar cualquier habitación adicional antes de guardar.
+- Se aplica **un mismo rango de fechas** a las habitaciones del grupo; cada fila puede tener un precio por noche diferente. El resumen muestra subtotales y el **total de todas las habitaciones**.
+- El cliente puede abonar a varias habitaciones de una sola vez durante el ingreso. El importe se distribuye en el orden mostrado, sin cobrar dos veces el efectivo, la transferencia ni el vuelto. La **reserva y su anticipo**, si existen, corresponden a la habitación principal.
+- En el mapa de habitaciones, cada habitación conserva **su propia cuenta, consumos, saldo, pagos y salida**. Dentro de la cuenta se muestran enlaces a las otras habitaciones activas del mismo titular y el saldo conjunto.
+- Los controles rechazan habitaciones ocupadas, arrendadas, en limpieza, incompatibles, con otra reserva superpuesta o seleccionadas dos veces. La verificación se repite antes de guardar los ingresos.
+- Las habitaciones que comparten un titular se vinculan por `guestId` y por el identificador de grupo `groupId` cuando nacen de un mismo ingreso. **No se migraron ni duplicaron fichas personales**; la base de datos sigue usando RLS e inicio de sesión.
+
+### Límites actuales
+- La cuenta y el cierre final se mantienen **por habitación**, aunque exista un saldo conjunto informativo. Aún no hay un botón de liquidación final de todas las habitaciones en una única operación.
+- Como en versiones anteriores, el estado compartido se almacena en un documento JSONB con **control de revisiones**. Una asignación concurrente en dos dispositivos puede generar un conflicto y recarga, pero no existe todavía una transacción de base de datos que garantice exclusión exclusiva sin carreras.
+- Versión beta: valide las operaciones con información de prueba antes de usarla con cobros reales.
+- Prueba local: `node tests/multihabitacion.test.cjs`. Las pruebas automatizadas se ejecutan antes de cada despliegue en GitHub Actions.
+
+---
+
 # Hotel Unicornio — Sistema de Recepción v0.5 (Fase 2)
 
 **Sitio de pruebas:** https://alelandtrkz.github.io/hotel-sistema-nomina-huespedes/
