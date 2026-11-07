@@ -1,0 +1,29 @@
+name: Validaciones Hotel Unicornio
+
+on:
+  push:
+    branches: [fase2-cuentas-estadias-historial]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+      - name: Node.js de pruebas
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Revisar sintaxis JavaScript
+        run: |
+          node --check app.js
+          node --check cloud.js
+      - name: Probar vuelto y caja (fase 1)
+        run: node tests/fase1.test.cjs
+      - name: Probar cuenta, cargos, ampliación, cierre e historial (fase 2)
+        run: node tests/fase2.test.cjs
