@@ -170,3 +170,8 @@
  .phase2-event-money{font-size:12px}
  .phase2-timeline{padding:13px}
 }
+
+.account-history-pagination{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.account-history-pagination span{color:#728179;font-size:12px;font-weight:650}
+.account-history-pagination .btn{white-space:nowrap}
+@media(max-width:640px){.account-history-pagination{width:100%;justify-content:flex-start;margin-top:8px}}
