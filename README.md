@@ -10,6 +10,17 @@ El propietario debe crear el acceso mediante la pantalla de inicio de sesión, u
 
 ---
 
+## Fase 1 — Vuelto y cuentas por habitación (v0.4)
+
+- **Tarjetas:** las habitaciones ocupadas con deuda muestran dos colores, rojo superior y azul inferior, con etiqueta `Por cobrar` y monto; también presentan la tarifa por noche. Un botón de habitación abre una cuenta emergente.
+- **Cuenta emergente:** datos del cliente, fecha de ingreso y salida, noches, cargos por hospedaje, consumos, abonos, saldo, y un formulario para cobrar directamente. Desde ahí se puede abrir la pantalla de varios con el destino de esa habitación preseleccionado.
+- **Vuelto en efectivo:** la cantidad a aplicar a la cuenta se distingue del efectivo recibido. El sistema calcula en centavos y exige seleccionar **Vuelto dado** o **Vuelto no dado** cuando el efectivo supera el importe a cobrar. Transferencias no generan vuelto.
+- **Vuelto pendiente:** queda vinculado al cobro de la habitación, al anticipo o a la venta directa y puede marcarse posteriormente como entregado. No se considera ingreso definitivo.
+- **Cierre de caja:** registra como entrada todo el efectivo recibido y como salida el vuelto realmente entregado, en el turno de entrega; muestra además vueltos pendientes. Exportación CSV y arqueo incluyen estos datos. Ejemplo: cargo $39, se reciben $40 y se devuelve $1 → efectivo neto $39.
+- **Compatibilidad:** los registros de pagos anteriores que no tienen campos de vuelto se tratan como cobros exactos; no se altera su historial.
+- **Alcance:** los botones de agregar persona adicional y extender una noche quedan para la fase 2. **Solo pruebas**; la sincronización actual sigue siendo un JSON compartido con control de conflictos, sin transacciones monetarias atómicas.
+- **Pruebas:** se ejecutaron verificaciones unitarias con datos ficticios para efectivo exacto, insuficiente, vuelto pendiente/entregado, caja, saldo de habitación, tarjeta bicolor y cuenta de habitación.
+
 ## Archivo de referencia de la versión 0.2
 
 ### Sistema de Recepción — documentación histórica v0.2
