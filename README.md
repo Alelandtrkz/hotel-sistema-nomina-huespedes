@@ -1,4 +1,18 @@
-# Hotel Unicornio — Sistema de Recepción (prototipo v0.2)
+# Hotel Unicornio — Beta conectada a Supabase
+
+**Estado actual:** la aplicación en GitHub Pages exige acceso del administrador con correo verificado. Los 1.448 registros de clientes reales están en Supabase bajo políticas RLS. Habitaciones, reservas, estadías, pagos, consumos, inventario y cierres de caja comparten un estado con control optimista de versión. **No usar para contabilidad real ni operaciones simultáneas críticas**: es un entorno de pruebas; las transacciones de módulos aún deben normalizarse.
+
+**URL:** https://alelandtrkz.github.io/hotel-sistema-nomina-huespedes/
+
+El propietario debe crear el acceso mediante la pantalla de inicio de sesión, usar contraseña nueva de al menos 12 caracteres y confirmar desde el correo del hotel. Ninguna contraseña debe registrarse aquí ni en GitHub. En Supabase configurar [Authentication → URL Configuration](https://supabase.com/dashboard/project/ttkhklboogpqvgsyjtwz/auth/url-configuration) para permitir la URL de Pages.
+
+**Detalles técnicos y advertencias:** [supabase/CONNECTED-BETA.md](supabase/CONNECTED-BETA.md)
+
+---
+
+## Archivo de referencia de la versión 0.2
+
+### Sistema de Recepción — documentación histórica v0.2
 
 **Hotel Unicornio · Puerto Francisco de Orellana (El Coca), Ecuador**
 
