@@ -98,7 +98,61 @@
   const occupied=roomId=>activeStays().some(x=>x.roomId===roomId);
   const extrasOf=stayId=>db.extras.filter(x=>x.stayId===stayId).reduce((s,e)=>s+e.price*e.quantity,0);
   const paidOf=stay=>asMoney((stay.advance||0)+(stay.payments||[]).reduce((s,p)=>s+p.amount,0));
-  const totalOf=stay=>asMoney(stay.roomTotal+extrasOf(stay.id));
+  function additionalPeopleOf(stay){
+  return asMoney((stay?.additionalPeople||[]).reduce((sum,p)=>sum+Number(p.amount||0),0));
+}
+  function extensionTotalOf(stay){
+  return asMoney((stay?.extensions||[]).reduce((sum,e)=>sum+Number(e.amount||0),0));
+}
+  function initialLodgingOf(stay){
+  return asMoney(Number(stay?.roomTotal||0)-extensionTotalOf(stay));
+}
+  function addIsoDays(date,days){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))||!Number.isInteger(days))return null;
+  const ms=Date.parse(date+'T12:00:00Z');
+  if(!Number.isFinite(ms)||new Date(ms).toISOString().slice(0,10)!==date)return null;
+  const d=new Date(ms);d.setUTCDate(d.getUTCDate()+days);
+  return d.toISOString().slice(0,10);
+}
+  function extensionBlocker(stay,until){
+  const r=roomOf(stay?.roomId);
+  if(!stay||stay.status!=='activa'||!r||r.status!=='ocupada')return 'La habitación no tiene una estadía activa.';
+  if(!until||until<=stay.departure)return 'La nueva fecha no es válida.';
+  const booked=db.reservations.some(b=>b.roomId===stay.roomId&&['pendiente','confirmada'].includes(b.status)&&overlap(stay.departure,until,b.arrival,b.departure));
+  if(booked)return 'No se puede ampliar: existe otra reserva asignada a esta habitación.';
+  const other=db.stays.some(s=>s.id!==stay.id&&s.status==='activa'&&s.roomId===stay.roomId&&overlap(stay.departure,until,s.arrival,s.departure));
+  return other?'No se puede ampliar: existe otra estadía activa en ese período.':'';
+}
+  function stayHistoryEvents(stay){
+  if(!stay)return [];
+  const events=[],extensions=stay.extensions||[];
+  const add=(date,title,description,amount,kind='info')=>events.push({
+    id:String(events.length),date:String(date||''),title:String(title||''),
+    description:String(description||''),amount:amount===null?null:asMoney(amount),kind
+  });
+  const initialNights=Math.max(1,getNightCount(stay.arrival,stay.departure)-extensions.reduce((n,e)=>n+Number(e.addedNights||1),0));
+  add(stay.createdAt||stay.arrival,'Ingreso y hospedaje',initialNights+' noche(s) · '+money(stay.roomRate)+' por noche',initialLodgingOf(stay),'cargo');
+  const booking=stay.reservationId?reservationOf(stay.reservationId):null;
+  if(Number(stay.advance)>0)add(booking?.createdAt||stay.createdAt,'Anticipo de reserva','Abono acreditado en esta estadía',stay.advance,'abono');
+  extensions.forEach(e=>add(e.createdAt,'Noche adicional',datePretty(e.oldDeparture)+' → '+datePretty(e.newDeparture)+' · tarifa '+money(e.rate),e.amount,'cargo'));
+  (stay.additionalPeople||[]).forEach(p=>add(p.createdAt,'Persona adicional · '+(p.category==='adulto'?'Adulto':'Niño de 6 a 12 años'),(p.name||'Acompañante')+' · '+Number(p.nights||1)+' noche(s) × '+money(p.unitPrice),p.amount,'cargo'));
+  db.extras.filter(e=>e.stayId===stay.id).forEach(e=>add(e.createdAt,'Varios · '+e.productName,Number(e.quantity||1)+' × '+money(e.price),Number(e.price)*Number(e.quantity),'cargo'));
+  (stay.payments||[]).forEach(p=>{
+    add(p.createdAt,'Pago '+(p.method==='transferencia'?'por transferencia':'en efectivo'),
+      (p.reference?'Referencia: '+p.reference:'')+(Number(p.cashChange)>0?' · efectivo recibido '+money(p.cashTendered)+'; vuelto '+money(p.cashChange):''),p.amount,'abono');
+    if(Number(p.cashChange)>0){
+      if(p.changeStatus==='pendiente')add(p.createdAt,'Vuelto pendiente','Dinero a favor del huésped; no reduce el saldo',p.cashChange,'vuelto');
+      if(p.changeStatus==='dado')add(p.changeDeliveredAt||p.createdAt,'Vuelto entregado','Salida de efectivo de caja; no modifica el hospedaje',p.cashChange,'vuelto');
+    }
+  });
+  if(booking&&Number(booking.cashChange)>0){
+    if(booking.changeStatus==='pendiente')add(booking.createdAt,'Vuelto de anticipo pendiente','Obligación de devolución al huésped',booking.cashChange,'vuelto');
+    if(booking.changeStatus==='dado')add(booking.changeDeliveredAt||booking.createdAt,'Vuelto de anticipo entregado','Salida de caja',booking.cashChange,'vuelto');
+  }
+  if(stay.status==='finalizada')add(stay.actualCheckout||stay.departure,'Cuenta cerrada y salida','Saldo del hospedaje: '+money(dueOf(stay))+' · habitación enviada a limpieza',null,'info');
+  return events.sort((a,b)=>a.date.localeCompare(b.date)||Number(a.id)-Number(b.id));
+}
+  const totalOf=stay=>asMoney(Number(stay.roomTotal||0)+extrasOf(stay.id)+additionalPeopleOf(stay));
   const dueOf=stay=>asMoney(Math.max(0,totalOf(stay)-paidOf(stay)));
   // The money credited to a room is independent from cash physically received.
   // Change due back to the customer is a liability, not another lodging payment.
@@ -136,7 +190,7 @@
   function cashChangeFields(prefix){
     return `<div class="cash-tender-zone section-gap" id="${prefix}-cash-zone">
       <div class="form-grid cols-2">
-        ${field('Efectivo entregado por el huésped (USD)','cashTendered','',{type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
+        ${field('Efectivo entregado por el huésped (USD)','cashTendered','',{id:prefix+'-cashTendered',type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
         <div class="field"><label>Vuelto calculado</label><div class="cash-change-preview" id="${prefix}-change-preview">${money(0)}</div></div>
       </div>
       <div class="cash-choice-wrap hidden" id="${prefix}-change-choice"><div class="mini-caption">¿Qué sucedió con el vuelto?</div>
