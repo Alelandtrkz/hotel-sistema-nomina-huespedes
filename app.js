@@ -569,7 +569,7 @@
     <aside class="panel"><div class="panel-head"><div><h2>Liquidación de estadía</h2><p>Detalle y registro de cobro</p></div></div><div class="panel-body">${s?`<div class="summary-card"><div class="mini-caption">HABITACIÓN ${esc(roomOf(s.roomId)?.number||'—')}</div><div class="summary-price">${money(totalOf(s))}</div><div class="summary-pair"><span>Hospedaje</span><strong>${money(s.roomTotal)}</strong></div><div class="summary-pair"><span>Varios</span><strong>${money(extrasOf(s.id))}</strong></div><div class="summary-pair"><span>Personas adicionales</span><strong>${money(additionalPeopleOf(s))}</strong></div><div class="summary-pair"><span>Abonado</span><strong>${money(paidOf(s))}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong class="${dues>0?'text-red':'text-green'}">${money(dues)}</strong></div><div class="summary-pair"><span>Vuelto pendiente a favor del huésped</span><strong>${money(pendingChangeOf(s))}</strong></div></div>
       ${renderPaymentForm(s)}
       ${renderFinalAccountSection(s)}
-      <div class="separator"></div>${btn('Registrar check-out','checkout-stay','btn-primary',`data-id="${esc(s.id)}"`)}<div class="mini-caption section-gap">La salida pasa la habitación a <strong>pendiente de limpieza</strong>. Los saldos pendientes permanecen en el historial.</div>`:noRows('Seleccione una estadía para gestionar su cuenta.')}</div></aside></div>
+      <div class="separator"></div>${btn('Registrar check-out','checkout-stay','btn-primary',`data-id="${esc(s.id)}"`)}<div class="mini-caption section-gap">La salida pasa la habitación a <strong>pendiente de limpieza</strong>. Los saldos se pagan antes de cerrar; los vueltos sin entregar siguen registrados en caja.</div>`:noRows('Seleccione una estadía para gestionar su cuenta.')}</div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Últimas salidas</h2><p>Historial de estadías y movimientos guardados en Supabase</p></div></div>${history.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Huésped</th><th>Habitación</th><th>Salida</th><th>Total</th><th>Saldo</th><th>Historial</th></tr></thead><tbody>${history.map(x=>`<tr><td><strong>${esc(guestName(guestOf(x.guestId)))}</strong></td><td>${esc(roomOf(x.roomId)?.number||'—')}</td><td>${datePretty(x.actualCheckout?.slice(0,10)||x.departure)}</td><td>${money(totalOf(x))}</td><td>${tag(money(dueOf(x)),dueOf(x)?'warning':'success')}</td><td>${btn('Ver movimientos','show-stay-history','btn-secondary btn-sm',`data-id="${esc(x.id)}"`)}</td></tr>`).join('')}</tbody></table></div>`:noRows('Aún no hay salidas registradas.')}</section>${viewed&&viewed.status==='finalizada'?renderClosedHistoryDialog(viewed):''}`;
   }
   const paidDirect=x=>!x.stayId&&['efectivo','transferencia'].includes(x.method);
@@ -696,6 +696,27 @@
     if(xForm){const f=readForm('extra-form'),p=productOf(f.productId);const el=document.getElementById('extra-preview');if(el)el.textContent=!p?'Seleccione un producto':p.price!==null&&Number(p.price)>0?money(Number(p.price)*(Number(f.quantity)||0)):'Precio sin configurar';updateCashPreview('extra-form','extra',asMoney(Number(p?.price||0)*Number(f.quantity||0)),f.method,f.stayId==='caja');}
     const manual=document.getElementById('manual-extra-form');if(manual){const f=readForm('manual-extra-form');updateCashPreview('manual-extra-form','manual',asMoney(Number(f.amount||0)),f.method,f.stayId==='caja');}
     const payment=document.getElementById('payment-form');if(payment){const f=readForm('payment-form');updateCashPreview('payment-form','payment',asMoney(Number(f.amount||0)),f.method);}
+    const roomExtraForm=document.getElementById('room-extra-form');
+    if(roomExtraForm){
+      const f=readForm('room-extra-form'),product=productOf(f.productId);
+      const sum=product&&Number.isFinite(Number(product.price))&&Number(product.price)>0?Number(product.price)*Number(f.quantity||0):0;
+      const preview=document.getElementById('room-extra-preview');
+      if(preview)preview.textContent=product&&Number(product.price)>0?'Cargo a la cuenta: '+money(asMoney(sum)):'Seleccione un producto con precio establecido.';
+    }
+    const personForm=document.getElementById('room-person-form');
+    if(personForm){
+      const f=readForm('room-person-form'),unit=Number(f.category==='nino'?db.config.childRate:db.config.extraPersonRate),nights=Number(f.nights||0);
+      const preview=document.getElementById('room-person-preview');
+      if(preview)preview.textContent=Number.isFinite(unit)&&unit>0&&Number.isSafeInteger(nights)&&nights>0
+        ?'Cargo a la cuenta: '+money(asMoney(unit*nights))+' ('+nights+' noche(s) × '+money(unit)+')'
+        :'Revise la tarifa y el número de noches.';
+    }
+    const finalize=document.getElementById('finalize-form');
+    if(finalize){
+      const f=readForm('finalize-form'),stay=stayOf(f.stayId),due=stay?dueOf(stay):0;
+      updateCashPreview('finalize-form','final',due,f.method,due>0);
+      document.getElementById('final-reference-field')?.classList.toggle('hidden',f.method!=='transferencia');
+    }
     const cForm=document.getElementById('cash-close-form');if(cForm){const f=readForm('cash-close-form'),sum=cashTotals(ui.cashDate||today(),ui.cashShift||'dia'),flt=Number(f.float||0),expected=asMoney(flt+sum.cash-sum.out),counted=String(f.counted??'').trim();for(const [id,v] of Object.entries({'cash-float-preview':money(flt),'cash-expected-preview':money(expected),'cash-variance-preview':counted===''?'Sin arqueo':money(asMoney(Number(counted)-expected))})){const el=document.getElementById(id);if(el)el.textContent=v;}}
   }
   function refreshRoomSelect(formType){
@@ -1023,6 +1044,11 @@
         ui.selectedRoomId=null;render();break;
       case 'room-add-extras':ui.extraTarget=id;navigate('varios');break;
       case 'room-go-checkout':ui.selectedStayId=id;ui.selectedRoomId=null;navigate('salidas');break;
+      case 'show-stay-history':ui.selectedHistoryStayId=id;render();break;
+      case 'close-history-dialog':
+        if(e.target.closest('[data-account-dialog]')&&!e.target.closest('.account-close'))break;
+        ui.selectedHistoryStayId=null;render();break;
+      case 'export-stay-history':exportStayHistory(id);break;
       case 'settle-change':{
         const r=changeMovements().find(x=>x.source===el.dataset.source&&x.id===id);
         if(!r||r.owner.changeStatus!=='pendiente'){toast('El vuelto ya no está pendiente.','error');break;}
@@ -1055,12 +1081,15 @@
       }
       case 'select-stay':ui.selectedStayId=id;render();break;
       case 'checkout-stay':{
-        const s=stayOf(id);if(!s||s.status!=='activa')break;
-        const due=dueOf(s);
-        if(due>0&&!window.confirm('La cuenta tiene un saldo pendiente de '+money(due)+'. ¿Registrar la salida de todas maneras?'))break;
-        if(pendingChangeOf(s)>0&&!window.confirm('Queda vuelto pendiente de '+money(pendingChangeOf(s))+' a favor del huésped. ¿Registrar salida de todas maneras? El pendiente permanecerá en caja.'))break;
-        const room=roomOf(s.roomId);if(room)room.status='limpieza';s.status='finalizada';s.actualCheckout=new Date().toISOString();if(s.reservationId){const b=reservationOf(s.reservationId);if(b)b.status='finalizada';}
-        persist();ui.selectedStayId=null;render();toast('Salida registrada. Habitación '+(room?.number||'')+' pendiente de limpieza.');break;
+        const stay=stayOf(id);if(!stay||stay.status!=='activa')break;
+        if(dueOf(stay)>0){toast('Antes de registrar la salida debe cancelar '+money(dueOf(stay))+'. Use Cierre de cuenta final para cobrar y cerrar en una operación.','error');break;}
+        const pending=pendingChangeOf(stay);
+        if(pending>0&&!window.confirm('Hay '+money(pending)+' de vuelto pendiente a favor del huésped. ¿Confirmar salida dejando esa obligación en caja?'))break;
+        const room=roomOf(stay.roomId);
+        if(!window.confirm('¿Registrar la salida de Hab. '+(room?.number||'—')+' y enviar a limpieza?'))break;
+        finishStay(stay,new Date().toISOString(),'Recepción');
+        persist();ui.selectedRoomId=null;ui.selectedStayId=null;ui.selectedHistoryStayId=stay.id;
+        navigate('salidas');toast('Cuenta cerrada. Hab. '+(room?.number||'—')+' pendiente de limpieza.');break;
       }
       case 'delete-room':{
         const r=roomOf(id);if(!r)break;
@@ -1081,7 +1110,7 @@
     const target=e.target;
     if(target.closest('#checkin-form')){ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};updatePricing();}
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
-    if(target.closest('#extra-form')||target.closest('#manual-extra-form')||target.closest('#cash-close-form')||target.closest('#payment-form'))updatePricing();
+    if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
   });
   document.addEventListener('change',e=>{
     const el=e.target;
@@ -1103,11 +1132,11 @@
       updatePricing();return;
     }
     if(el.closest('#payment-form')&&el.name==='method')document.getElementById('payment-reference')?.classList.toggle('hidden',el.value!=='transferencia');
-    if(el.closest('#payment-form')||el.closest('#extra-form')||el.closest('#manual-extra-form'))updatePricing();
+    if(['#payment-form','#extra-form','#manual-extra-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>el.closest(s)))updatePricing();
   });
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
-    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
+    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
     if(handlers[id]){e.preventDefault();handlers[id]();}
   });
   document.addEventListener('reset',e=>{
@@ -1116,7 +1145,7 @@
     else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();render();}
     else if(id==='guest-form'){e.preventDefault();ui.lookup.huespedes='';ui.lookupMessage.huespedes='';ui.lookupResult.huespedes=false;render();}
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ui.selectedHistoryStayId){ui.selectedHistoryStayId=null;render();return;}if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
   document.getElementById('year').textContent=String(new Date().getFullYear());
   document.getElementById('current-date').textContent=new Intl.DateTimeFormat('es-EC',{weekday:'short',day:'numeric',month:'long',year:'numeric'}).format(new Date());
   if(window.hotelCloud?.ready){
