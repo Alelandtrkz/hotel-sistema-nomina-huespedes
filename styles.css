@@ -3,3 +3,27 @@
 @media(max-width:1250px){.metrics{grid-template-columns:repeat(2,1fr)}.room-grid{grid-template-columns:repeat(3,1fr)}.split{grid-template-columns:1fr}.sidebar{width:225px;min-width:225px}.workspace{padding:28px}.notice{margin:22px 28px 0}.topbar{padding:0 28px}}@media(max-width:900px){.sidebar{position:fixed;left:-260px;top:0;transition:left .2s;box-shadow:none}.sidebar.open{left:0;box-shadow:0 0 0 100vmax #0006}.mobile-menu{display:inline-block}.topbar{height:66px}.two-col{grid-template-columns:1fr}.catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.workspace{padding:24px 15px 45px}.notice{margin:14px 15px 0}.topbar{padding:0 15px}.top-date,.top-location,.top-divider{display:none}.topbar-right{gap:9px}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.metric{padding:15px;min-height:123px}.metric-value{font-size:24px}.room-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:14px}.page-heading{align-items:flex-start;flex-direction:column;gap:13px}.page-heading h1{font-size:24px}.panel-head{padding:17px}.panel-body{padding:17px}.form-grid,.form-grid.cols-3,.form-grid.cols-4{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.form-actions{justify-content:stretch;flex-direction:column}.form-actions .btn{width:100%}.settings-table{grid-template-columns:1fr 1fr 1fr}.settings-table .field label{font-size:10px}.room-summary{gap:10px}}
 @media print{.sidebar,.topbar,.notice,.heading-actions,.form-actions,.btn,.filters{display:none!important}.main-column{width:100%}.workspace{padding:0}.panel{break-inside:avoid}}
 .inventory-details{border:1px solid #e4ebe5;padding:12px 15px;border-radius:9px;background:#fbfdfb}.inventory-details summary{font-weight:800;color:#32644c;cursor:pointer;font-size:12px}.inventory-details[open] summary{margin-bottom:12px}.inventory-row{display:grid;grid-template-columns:100px 170px 145px auto;gap:10px;align-items:center;min-height:49px;border-bottom:1px solid #edf1ed;padding:6px 2px}.inventory-row input,.inventory-row select{min-width:0;width:100%;padding:8px 9px;border:1px solid #dce5df;border-radius:7px;background:white}.inventory-row .btn{justify-self:start}.inventory-heading{font-size:10px;text-transform:uppercase;color:#84928a;font-weight:800;min-height:30px}@media(max-width:640px){.inventory-row{grid-template-columns:minmax(70px,1fr) minmax(92px,1.2fr) minmax(80px,1fr) auto;gap:5px}.inventory-row .btn{padding:4px 6px;font-size:10px}.inventory-row .small-tag{white-space:normal;font-size:9px}}
+
+/* v0.2 · inventario fotográfico y control diario de caja */
+.sidebar{overflow-y:auto;scrollbar-width:thin}
+.legend-dot.gray,.gray{background:#a6afb1}
+.room-tile.arrendada{background:#f3f4f4;border-color:#e0e3e5;color:#65716b}
+.room-tile.arrendada .status-text{background:#e5e9e8;color:#596763}
+.room-tile.arrendada .room-type{color:#77817c}
+.room-tile:focus-visible,.product-item:focus-visible{outline:3px solid #b5d9c7;outline-offset:2px}
+.product-catalog-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:18px 21px;max-height:470px;overflow:auto}
+.product-item{border:1px solid #e3ebe5;border-radius:9px;background:white;text-align:left;display:flex;flex-direction:column;gap:4px;padding:14px;min-width:0;color:var(--ink);transition:.15s}
+.product-item:hover{border-color:#99bba3;box-shadow:0 5px 18px #152e2312;background:#fbfdfb}
+.product-item strong{font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+.product-item small{font-size:10px;color:#8b9890}
+.product-item .price{font-size:16px;font-weight:800;color:#245943}
+.product-settings-list{max-height:590px;overflow-y:auto;padding-right:7px;border-bottom:1px solid var(--line)}
+.movement-list{max-height:620px;overflow:auto}
+.movement-row{border-bottom:1px solid #edf1ee;padding:13px 0;display:flex;justify-content:space-between;align-items:center;gap:14px;font-size:12px}
+.movement-row:last-child{border-bottom:0}
+.movement-row strong{overflow-wrap:anywhere}
+.movement-row>strong{flex-shrink:0}
+.metric-value.small-metric{font-size:24px;letter-spacing:-.9px}
+@media(max-width:1250px){.product-catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:900px){.product-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.product-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr));padding:12px;gap:8px}.product-item{padding:11px}.metric-value.small-metric{font-size:18px}.room-tile{min-height:125px}.room-tile .room-type{min-height:30px}.settings-table{gap:5px}.sidebar{padding-top:17px}}
