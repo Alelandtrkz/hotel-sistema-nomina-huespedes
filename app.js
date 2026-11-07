@@ -100,6 +100,60 @@
   const paidOf=stay=>asMoney((stay.advance||0)+(stay.payments||[]).reduce((s,p)=>s+p.amount,0));
   const totalOf=stay=>asMoney(stay.roomTotal+extrasOf(stay.id));
   const dueOf=stay=>asMoney(Math.max(0,totalOf(stay)-paidOf(stay)));
+  // The money credited to a room is independent from cash physically received.
+  // Change due back to the customer is a liability, not another lodging payment.
+  const moneyCents=value=>Math.round(Number(value)*100);
+  function resolveTendered(value,method,netAmount,changeStatus){
+    const net=Number(netAmount),cents=moneyCents(net);
+    if(!Number.isFinite(net)||net<0||!Number.isSafeInteger(cents)||cents<0)return {error:'Ingrese un importe válido.'};
+    if(method!=='efectivo')return {received:asMoney(net),change:0,status:'no_aplica'};
+    const raw=String(value??'').trim(),received=raw===''?net:Number(raw),receivedCents=moneyCents(received);
+    if(cents===0&&receivedCents>0)return {error:'No registre efectivo recibido cuando el importe aplicado es cero.'};
+    if(!Number.isFinite(received)||!Number.isSafeInteger(receivedCents)||receivedCents<cents)
+      return {error:'El efectivo recibido debe ser igual o mayor al importe aplicado a la cuenta.'};
+    const change=asMoney((receivedCents-cents)/100);
+    if(change>0&&!['dado','pendiente'].includes(changeStatus))
+      return {error:'Indique si entregó el vuelto o si quedó pendiente.'};
+    return {received:asMoney(receivedCents/100),change,status:change>0?changeStatus:'no_aplica'};
+  }
+  const changePending=item=>item?.changeStatus==='pendiente'?asMoney(item.cashChange||0):0;
+  function changeMovements(){
+    const all=[];
+    for(const b of db.reservations)if(Number(b.cashChange)>0)all.push({source:'reserva',id:b.id,owner:b,stayId:'',roomId:b.roomId||'',label:'Anticipo reserva · '+b.name});
+    for(const s of db.stays)for(const pay of s.payments||[])if(Number(pay.cashChange)>0)all.push({source:'pago',id:pay.id,owner:pay,stayId:s.id,roomId:s.roomId,label:'Hab. '+(roomOf(s.roomId)?.number||'—')+' · cobro de hospedaje'});
+    for(const e of db.extras)if(paidDirect(e)&&Number(e.cashChange)>0)all.push({source:'venta',id:e.id,owner:e,stayId:'',roomId:'',label:'Varios · '+e.productName});
+    return all;
+  }
+  function pendingChangeOf(stay){
+    return asMoney(changeMovements().filter(x=>(x.stayId===stay.id)||(stay.reservationId&&x.source==='reserva'&&x.id===stay.reservationId))
+      .reduce((sum,x)=>sum+changePending(x.owner),0));
+  }
+  function paidCashRecord(base,details,stamp,shift){
+    return {...base,cashTendered:details.received,cashChange:details.change,changeStatus:details.status,
+      changeDeliveredAt:details.status==='dado'?stamp:null,
+      changeDeliveredShift:details.status==='dado'?shift:null};
+  }
+  function cashChangeFields(prefix){
+    return `<div class="cash-tender-zone section-gap" id="${prefix}-cash-zone">
+      <div class="form-grid cols-2">
+        ${field('Efectivo entregado por el huésped (USD)','cashTendered','',{type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
+        <div class="field"><label>Vuelto calculado</label><div class="cash-change-preview" id="${prefix}-change-preview">${money(0)}</div></div>
+      </div>
+      <div class="cash-choice-wrap hidden" id="${prefix}-change-choice"><div class="mini-caption">¿Qué sucedió con el vuelto?</div>
+        <div class="cash-choice-items"><label><input type="radio" name="changeStatus" value="dado"><span>Vuelto dado</span></label><label><input type="radio" name="changeStatus" value="pendiente"><span>Vuelto no dado · pendiente</span></label></div>
+        <p class="mini-caption">Si queda pendiente, se registra como dinero que el hotel debe entregar al cliente.</p>
+      </div>
+    </div>`;
+  }
+  function updateCashPreview(formId,prefix,amount,method,active=true){
+    const form=document.getElementById(formId),zone=document.getElementById(prefix+'-cash-zone');if(!form||!zone)return;
+    const show=active&&method==='efectivo';zone.classList.toggle('hidden',!show);
+    const raw=form.querySelector('[name=cashTendered]')?.value||'',tendered=raw===''?Number(amount):Number(raw);
+    const change=Number.isFinite(tendered)?asMoney(tendered-Number(amount)):0;
+    const preview=document.getElementById(prefix+'-change-preview');
+    if(preview){preview.textContent=!Number.isFinite(tendered)?'Revise el importe':change<0?'Efectivo insuficiente':money(change);preview.classList.toggle('text-red',change<0);}
+    document.getElementById(prefix+'-change-choice')?.classList.toggle('hidden',!show||change<=0);
+  }
   const readForm=id=>{const e=document.getElementById(id);return e?Object.fromEntries(new FormData(e).entries()):{};};
   const validDoc=s=>/^\d{10}$/.test(String(s||'').trim()); // Solo formato, NO verifica titularidad ni acceso al Registro Civil.
   function persist(){
@@ -124,14 +178,24 @@
   const breakfastOptions=v=>selectOptions([['sin','Sin desayuno'],['con','Con desayuno']],v||'sin');
   const roomStateLabel=s=>({disponible:'Disponible',ocupada:'Ocupada',limpieza:'Pend. limpieza',arrendada:'Arrendada / fuera de operación'})[s]||'Desconocido';
   const statusTag=s=>tag(roomStateLabel(s),s==='disponible'?'success':s==='ocupada'?'danger':s==='arrendada'?'':'warning');
-  const roomTile=r=>`<button class="room-tile ${esc(r.status)}" data-action="select-room" data-id="${esc(r.id)}" title="Ver habitación ${esc(r.number)}"><div class="room-no">${esc(r.number)}</div><div class="room-type">${esc(LABELS[r.type])}</div><div class="status-text"><span class="legend-dot ${r.status==='disponible'?'green':r.status==='ocupada'?'red':r.status==='arrendada'?'gray':'yellow'}"></span>${roomStateLabel(r.status)}</div></button>`;
-  const roomsLegend=()=>`<div class="room-summary"><span><i class="legend-dot green"></i>Disponible</span><span><i class="legend-dot red"></i>Ocupada</span><span><i class="legend-dot yellow"></i>Pendiente de limpieza</span><span><i class="legend-dot gray"></i>Arrendada</span></div>`;
+  const roomTile=r=>{
+    const stay=activeStays().find(s=>s.roomId===r.id),due=stay?dueOf(stay):0,owed=stay?pendingChangeOf(stay):0;
+    const hasDue=r.status==='ocupada'&&due>0;
+    return `<button class="room-tile ${esc(r.status)} ${hasDue?'occupied-due':''}" data-action="select-room" data-id="${esc(r.id)}" title="Ver cuenta de habitación ${esc(r.number)}">
+      <div class="room-topline"><span class="room-no">${esc(r.number)}</span>${stay?`<span class="room-due-amount ${hasDue?'unpaid':''}">${hasDue?`Por cobrar<br><strong>${money(due)}</strong>`:`Saldo ${money(0)}`}</span>`:''}</div>
+      <div class="room-type">${esc(LABELS[r.type])}</div>
+      ${stay?`<div class="room-tariff">Tarifa ${money(stay.roomRate)} / noche</div>`:''}
+      <div class="room-badges">${hasDue?'<span class="room-badge occupied">Ocupada</span><span class="room-badge owing">Por cobrar</span>':`<span class="room-badge ${esc(r.status)}">${roomStateLabel(r.status)}</span>`}
+      ${owed>0?`<span class="room-badge change-pending">Vuelto ${money(owed)}</span>`:''}</div>
+    </button>`;
+  };
+  const roomsLegend=()=>`<div class="room-summary"><span><i class="legend-dot green"></i>Disponible</span><span><i class="legend-dot red"></i>Ocupada pagada</span><span><i class="legend-dot blue"></i>Ocupada por cobrar</span><span><i class="legend-dot yellow"></i>Pendiente de limpieza</span><span><i class="legend-dot gray"></i>Arrendada</span></div>`;
   const noRows=(message='Todavía no hay registros.')=>`<div class="empty"><div class="empty-icon">▧</div>${esc(message)}</div>`;
   const field=(title,name,value='',opts={})=>`<div class="field ${opts.full?'full':''}"><label for="${esc(opts.id||name)}">${esc(title)}${opts.required?' *':''}</label>${opts.textarea?`<textarea id="${esc(opts.id||name)}" name="${esc(name)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''}>${esc(value)}</textarea>`:`<input id="${esc(opts.id||name)}" name="${esc(name)}" type="${esc(opts.type||'text')}" value="${esc(value)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''} ${opts.min!==undefined?`min="${opts.min}"`:''} ${opts.max!==undefined?`max="${opts.max}"`:''} ${opts.step!==undefined?`step="${opts.step}"`:''} ${opts.maxlength?`maxlength="${opts.maxlength}"`:''} ${opts.readonly?'readonly':''} autocomplete="off">`}${opts.hint?`<div class="field-hint">${esc(opts.hint)}</div>`:''}</div>`;
   const select=(title,name,opts,value,extra='')=>`<div class="field"><label for="${esc(name)}">${esc(title)}</label><select id="${esc(name)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula ecuatoriana','document',g.document,{required:true,placeholder:'10 dígitos',maxlength:10})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por número de cédula</label><input id="lookup-${scope}" inputmode="numeric" maxlength="10" placeholder="Ingrese 10 dígitos" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
+  let ui={view:'inicio',selectedRoomId:null,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',paymentAmount:'',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
@@ -142,7 +206,7 @@
     document.getElementById('app-view').innerHTML=(views[ui.view]||renderDashboard)()+`<div class="footer-note">Hotel Unicornio · Puerto Francisco de Orellana · ${window.hotelCloud?.ready?'Versión beta sincronizada con Supabase':'Prototipo local'}</div>`;
     updatePricing();
   }
-  function navigate(view){ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
+  function navigate(view){if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
   function renderDashboard(){
     const available=db.rooms.filter(x=>x.status==='disponible').length,occ=db.rooms.filter(x=>x.status==='ocupada').length,dirty=db.rooms.filter(x=>x.status==='limpieza').length;
     const arrivals=db.reservations.filter(x=>x.arrival===today()&&['pendiente','confirmada'].includes(x.status));
@@ -161,17 +225,79 @@
       <section class="panel"><div class="panel-head"><div><h2>Huéspedes alojados</h2><p>Estadías en curso</p></div>${btn('Ver salidas','go-salidas','btn-link')}</div><div class="panel-body">${stays.length?stays.map(s=>`<div class="arrival-row"><div class="arrival-avatar">${esc(roomOf(s.roomId)?.number||'—')}</div><div class="flex-grow"><strong>${esc(guestName(guestOf(s.guestId)))}</strong><div class="meta">Salida: ${datePretty(s.departure)}</div></div>${tag(dueOf(s)>0?'Saldo '+money(dueOf(s)):'Pagado',dueOf(s)>0?'warning':'success')}</div>`).join(''):noRows('Todavía no hay huéspedes alojados.')}</div></section></div>
     </div><div class="dashboard-notice"><strong>Estado inicial:</strong> se muestran las habitaciones identificadas en el listado entregado, incluidas las arrendadas. Verifique los datos transcritos y sus estados reales en <button class="btn btn-link" data-action="go-configuracion">Tarifas y ajustes</button>.</div>`;
   }
+  function renderPaymentForm(stay){
+    const due=dueOf(stay);
+    return `<form id="payment-form" class="section-gap">
+      <input type="hidden" name="stayId" value="${esc(stay.id)}">
+      <div class="form-grid cols-2">
+        ${select('Método de pago','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
+        ${select('Turno','shift',[['dia','Día'],['noche','Noche']],'dia')}
+        ${field('Importe a aplicar a la cuenta (USD)','amount',due>0?due:'',{type:'number',min:0.01,step:'0.01',required:true})}
+      </div>
+      ${cashChangeFields('payment')}
+      <div class="field hidden section-gap" id="payment-reference"><label for="reference">Código de transferencia *</label><input id="reference" name="reference" placeholder="Referencia bancaria"></div>
+      <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago</button>
+    </form>`;
+  }
+  function renderRoomAccount(room,stay){
+    const guest=stay?guestOf(stay.guestId):null,owed=stay?pendingChangeOf(stay):0,due=stay?dueOf(stay):0;
+    const charges=stay?db.extras.filter(e=>e.stayId===stay.id):[];
+    const pays=stay?(stay.payments||[]):[];
+    const history=stay?`
+      <div class="account-summary">
+        <div class="account-main-total"><span>Valor por cobrar ahora</span><strong class="${due>0?'text-red':'text-green'}">${money(due)}</strong></div>
+        <div class="account-total-grid"><div><span>Tarifa por noche</span><strong>${money(stay.roomRate)}</strong></div><div><span>Noches</span><strong>${getNightCount(stay.arrival,stay.departure)}</strong></div><div><span>Hospedaje</span><strong>${money(stay.roomTotal)}</strong></div><div><span>Varios</span><strong>${money(extrasOf(stay.id))}</strong></div><div><span>Total cuenta</span><strong>${money(totalOf(stay))}</strong></div><div><span>Pagado</span><strong>${money(paidOf(stay))}</strong></div></div>
+        ${owed>0?`<div class="account-change-due"><strong>Vuelto pendiente de entregar: ${money(owed)}</strong><span>Es dinero a favor del huésped y no reduce el saldo de hospedaje.</span></div>`:''}
+      </div>
+      <div class="account-columns"><section>
+        <h3>Datos de la persona</h3>
+        <div class="account-detail"><span>Nombre</span><strong>${esc(guestName(guest)||'No disponible')}</strong></div>
+        <div class="account-detail"><span>Documento</span><strong>${esc(guest?.document||'—')}</strong></div>
+        <div class="account-detail"><span>Teléfono</span><strong>${esc(guest?.phone||'—')}</strong></div>
+        <div class="account-detail"><span>Correo</span><strong>${esc(guest?.email||'—')}</strong></div>
+        <div class="account-detail"><span>Ingreso</span><strong>${datePretty(stay.arrival)}</strong></div>
+        <div class="account-detail"><span>Salida prevista</span><strong>${datePretty(stay.departure)}</strong></div>
+        <div class="account-detail"><span>Desayuno</span><strong>${stay.breakfast==='con'?'Incluido':'No incluido'}</strong></div>
+      </section><section>
+        <h3>Movimientos de la habitación</h3>
+        <div class="account-line"><div><strong>Hospedaje · ${getNightCount(stay.arrival,stay.departure)} noche(s)</strong><small>${money(stay.roomRate)} / noche</small></div><strong>${money(stay.roomTotal)}</strong></div>
+        ${charges.map(e=>`<div class="account-line"><div><strong>${esc(e.productName)}</strong><small>${e.quantity} × ${money(e.price)}</small></div><strong>${money(e.price*e.quantity)}</strong></div>`).join('')}
+        ${stay.advance>0?`<div class="account-line paid"><div><strong>Anticipo</strong><small>Reserva vinculada</small></div><strong>−${money(stay.advance)}</strong></div>`:''}
+        ${pays.map(p=>`<div class="account-line paid"><div><strong>Pago ${p.method==='transferencia'?'transferencia':'efectivo'}</strong><small>${esc(p.createdAt?new Date(p.createdAt).toLocaleString('es-EC'):'')} ${p.cashChange>0?' · recibido '+money(p.cashTendered)+' · vuelto '+money(p.cashChange)+' ('+(p.changeStatus==='pendiente'?'pendiente':'dado')+')':''}</small></div><strong>−${money(p.amount)}</strong></div>`).join('')}
+        ${!charges.length&&!pays.length&&!(stay.advance>0)?'<p class="mini-caption">Sin otros movimientos todavía.</p>':''}
+      </section></div>
+      <div class="account-actions">
+        ${btn('Agregar varios','room-add-extras','btn-secondary',`data-id="${esc(stay.id)}"`)}
+        ${btn('Ver salidas y cobros','room-go-checkout','btn-secondary',`data-id="${esc(stay.id)}"`)}
+        <span class="mini-caption">Personas adicionales y extensión de noches: próxima fase.</span>
+      </div>
+      <div class="account-payment-section"><h3>Cobrar a esta habitación</h3><p class="mini-caption">Se puede pagar en una sola operación o registrar abonos parciales. Si recibe más efectivo, marque si el vuelto se entregó o quedó pendiente.</p>
+       ${renderPaymentForm(stay)}
+      </div>
+      ${owed>0?`<div class="account-change-actions"><strong>Vueltos pendientes a esta habitación</strong>${changeMovements().filter(x=>changePending(x.owner)>0&&((x.stayId===stay.id)||(stay.reservationId&&x.source==='reserva'&&x.id===stay.reservationId))).map(x=>`<div class="account-line"><div><span>${esc(x.label)}</span><strong>${money(changePending(x.owner))}</strong></div>${btn('Entregar vuelto','settle-change','btn-secondary btn-sm',`data-source="${esc(x.source)}" data-id="${esc(x.id)}"`)}</div>`).join('')}</div>`:''}
+    `: `<div class="account-empty"><p>${room.status==='arrendada'?'Habitación arrendada; fuera del inventario operativo.':room.status==='limpieza'?'En limpieza. Marque disponible cuando esté lista.':'No hay estadía activa en esta habitación.'}</p>
+     ${room.status==='disponible'?btn('Registrar ingreso','start-room-checkin','btn-primary',`data-id="${esc(room.id)}"`):''}
+     ${room.status==='limpieza'?btn('Marcar limpia / disponible','mark-room-clean','btn-primary',`data-id="${esc(room.id)}"`):''}
+     ${room.status==='disponible'?btn('Marcar pendiente de limpieza','mark-room-dirty','btn-secondary',`data-id="${esc(room.id)}"`):''}
+    </div>`;
+    return `<div class="account-overlay" data-action="close-room-account" role="presentation">
+      <div class="account-dialog" role="dialog" aria-modal="true" aria-label="Cuenta de habitación ${esc(room.number)}" data-account-dialog>
+        <div class="account-dialog-header"><div><span class="eyebrow">CUENTA POR HABITACIÓN</span><h2>Habitación ${esc(room.number)}</h2><p>${esc(LABELS[room.type])} · ${roomStateLabel(room.status)}</p></div>
+          <div class="account-heading-total"><span>Saldo por cobrar</span><strong>${money(due)}</strong></div>
+          <button class="account-close" data-action="close-room-account" type="button" aria-label="Cerrar cuenta de habitación">×</button></div>
+        <div class="account-dialog-body">${history}</div>
+      </div></div>`;
+  }
   function renderRooms(){
-    const filtered=db.rooms.filter(r=>(ui.roomFilter==='todos'||r.status===ui.roomFilter)&&(ui.roomTypeFilter==='todos'||r.type===ui.roomTypeFilter));
+    const filtered=db.rooms.filter(r=>(ui.roomFilter==='todos'||ui.roomFilter==='por-cobrar'||r.status===ui.roomFilter)&&(ui.roomTypeFilter==='todos'||r.type===ui.roomTypeFilter));
     const selected=roomOf(ui.selectedRoomId);
     const stay=selected?activeStays().find(s=>s.roomId===selected.id):null;
-    return head('Control operativo','Habitaciones','Consulte el estado de cada habitación y gestione limpieza e ingresos.',btn('Nuevo ingreso','go-ingreso'))+
-      `<section class="panel"><div class="panel-head"><div><h2>Mapa de habitaciones</h2><p>${db.rooms.length} habitaciones registradas, incluidas ${db.rooms.filter(r=>r.status==='arrendada').length} arrendadas</p></div>${roomsLegend()}</div>
-      <div class="filters"><select id="filter-room-status" aria-label="Filtrar por estado">${selectOptions([['todos','Todos los estados'],['disponible','Disponibles'],['ocupada','Ocupadas'],['limpieza','Pendientes de limpieza'],['arrendada','Arrendadas']],ui.roomFilter)}</select><select id="filter-room-type" aria-label="Filtrar por tipo">${selectOptions([['todos','Todos los tipos'],...ROOM_TYPES.map(x=>[x,LABELS[x]])],ui.roomTypeFilter)}</select><span class="mini-caption">Seleccione una habitación para administrar su estado.</span></div>
-      <div class="room-grid">${filtered.length?filtered.map(roomTile).join(''):noRows('No hay habitaciones que coincidan con el filtro.')}</div></section>
-      ${selected?`<section class="panel section-gap"><div class="panel-head"><div><h2>Habitación ${esc(selected.number)} · ${esc(LABELS[selected.type])}</h2><p>Estado actual: ${roomStateLabel(selected.status)}</p></div>${statusTag(selected.status)}</div><div class="panel-body"><div class="room-action-card"><h3>${selected.status==='ocupada'?'Habitación ocupada':selected.status==='limpieza'?'Pendiente de limpieza':selected.status==='arrendada'?'Habitación arrendada':'Lista para recibir huéspedes'}</h3><p>${stay?'Huésped: '+esc(guestName(guestOf(stay.guestId)))+' · salida prevista '+datePretty(stay.departure):selected.status==='limpieza'?'Marque como limpia una vez preparada para recibir al siguiente huésped.':selected.status==='arrendada'?'Esta habitación se encuentra fuera de la operación de recepción.':'Puede registrar un ingreso o cambiar el estado de limpieza.'}</p>
-        ${selected.status==='arrendada'?'<span class="mini-caption">No disponible para reservas ni ingresos.</span>':selected.status==='disponible'?btn('Registrar ingreso','start-room-checkin','btn-primary',`data-id="${esc(selected.id)}"`)+btn('Marcar pendiente de limpieza','mark-room-dirty','btn-secondary',`data-id="${esc(selected.id)}"`):selected.status==='limpieza'?btn('Marcar limpia / disponible','mark-room-clean','btn-primary',`data-id="${esc(selected.id)}"`):btn('Gestionar salida','go-salidas','btn-secondary')}
-      </div></div></section>`:''}`;
+    const unpaid=activeStays().filter(s=>dueOf(s)>0),totalReceivable=asMoney(unpaid.reduce((n,s)=>n+dueOf(s),0));
+    return head('Control operativo','Habitaciones','Toque una habitación para abrir su cuenta, revisar cargos y registrar pagos.',btn('Nuevo ingreso','go-ingreso'))+
+      `<section class="panel"><div class="panel-head"><div><h2>Mapa de habitaciones</h2><p>${db.rooms.length} habitaciones · ${unpaid.length} con saldo por cobrar · total pendiente ${money(totalReceivable)}</p></div>${roomsLegend()}</div>
+      <div class="filters"><select id="filter-room-status" aria-label="Filtrar por estado">${selectOptions([['todos','Todos los estados'],['disponible','Disponibles'],['ocupada','Ocupadas'],['por-cobrar','Ocupadas por cobrar'],['limpieza','Pendientes de limpieza'],['arrendada','Arrendadas']],ui.roomFilter)}</select><select id="filter-room-type" aria-label="Filtrar por tipo">${selectOptions([['todos','Todos los tipos'],...ROOM_TYPES.map(x=>[x,LABELS[x]])],ui.roomTypeFilter)}</select></div>
+      <div class="room-grid">${filtered.filter(r=>ui.roomFilter!=='por-cobrar'||(r.status==='ocupada'&&activeStays().some(s=>s.roomId===r.id&&dueOf(s)>0))).length?filtered.filter(r=>ui.roomFilter!=='por-cobrar'||(r.status==='ocupada'&&activeStays().some(s=>s.roomId===r.id&&dueOf(s)>0))).map(roomTile).join(''):noRows('No hay habitaciones que coincidan con el filtro.')}</div></section>
+      ${selected?renderRoomAccount(selected,stay):''}`;
   }
   function availableForCheckin(r,arrival,departure,excludeReservationId){
     if(r.status!=='disponible')return false;
@@ -206,9 +332,9 @@
         </div>
         <div class="form-section-label">03 · Pago</div><div class="form-grid cols-3">
           ${select('Forma de pago','paymentMethod',[['efectivo','Efectivo'],['transferencia','Transferencia']],d.paymentMethod)}${select('Turno de recepción','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
-          ${field('Valor entregado / transferido','paymentAmount',d.paymentAmount,{type:'number',required:true,min:0,step:'0.01',placeholder:'0.00'})}
+          ${field('Importe a aplicar al hospedaje (USD)','paymentAmount',d.paymentAmount,{type:'number',required:true,min:0,step:'0.01',placeholder:'0.00'})}
           <div class="field ${d.paymentMethod==='transferencia'?'':'hidden'}" id="transfer-field"><label for="transferCode">Código de transferencia *</label><input name="transferCode" id="transferCode" placeholder="Referencia bancaria" value="${esc(d.transferCode||'')}"></div>
-        </div><div class="mini-caption section-gap">Puede registrar pagos parciales. El sistema mostrará el saldo pendiente.</div>
+        </div>${cashChangeFields('checkin')}<div class="mini-caption section-gap">Puede registrar pagos parciales. El saldo descuenta solo lo aplicado a la cuenta, no el dinero entregado como vuelto.</div>
         <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
           ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice)}
         </div><div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
@@ -237,7 +363,7 @@
         ${select('Asignar habitación (opcional)','roomId',reservationRoomOptions(d),d.roomId)}
         ${field('Anticipo recibido (USD)','advance',d.advance,{type:'number',min:0,step:'0.01',placeholder:'0.00'})}${select('Método del anticipo','advanceMethod',[['efectivo','Efectivo'],['transferencia','Transferencia']],d.advanceMethod||'efectivo')}${field('Referencia bancaria (si transferencia)','advanceRef',d.advanceRef,{placeholder:'Número de transacción'})}${select('Turno','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
         ${field('Observaciones','notes',d.notes,{textarea:true,full:true,placeholder:'Hora de llegada, solicitud especial...'})}
-        </div><div class="summary-card section-gap"><div class="summary-pair"><span>Tarifa por noche</span><strong id="reservation-rate">${rateLabel(d.type,d.breakfast)}</strong></div><div class="summary-pair"><span>Duración</span><strong id="reservation-nights">${nights} noches</strong></div><div class="summary-pair total"><span>Total estimado</span><strong id="reservation-total">${rate(d.type,d.breakfast)===null?'Por definir':money(total)}</strong></div><div class="summary-pair"><span>Anticipo sugerido (50%)</span><strong id="reservation-deposit">${rate(d.type,d.breakfast)===null?'Por definir':money(total*.5)}</strong></div></div>
+        </div>${cashChangeFields('reservation')}<div class="summary-card section-gap"><div class="summary-pair"><span>Tarifa por noche</span><strong id="reservation-rate">${rateLabel(d.type,d.breakfast)}</strong></div><div class="summary-pair"><span>Duración</span><strong id="reservation-nights">${nights} noches</strong></div><div class="summary-pair total"><span>Total estimado</span><strong id="reservation-total">${rate(d.type,d.breakfast)===null?'Por definir':money(total)}</strong></div><div class="summary-pair"><span>Anticipo sugerido (50%)</span><strong id="reservation-deposit">${rate(d.type,d.breakfast)===null?'Por definir':money(total*.5)}</strong></div></div>
         <div class="mini-caption section-gap">Si no asigna habitación, la reserva no bloquea inventario específico. Sujeto a disponibilidad.</div><div class="form-actions"><button type="reset" class="btn btn-secondary">Limpiar</button><button type="submit" class="btn btn-primary">Guardar reserva</button></div></form></div></section>
         <aside class="panel"><div class="panel-head"><div><h2>Condiciones de reserva</h2><p>Información vigente del hotel</p></div></div><div class="panel-body"><div class="summary-pair"><span>Check-in</span><strong>Desde 12:00</strong></div><div class="summary-pair"><span>Check-out</span><strong>Hasta 14:00</strong></div><div class="summary-pair"><span>Anticipo</span><strong>50%</strong></div><div class="summary-pair"><span>Aviso para devolución</span><strong>24 h antes</strong></div><div class="separator"></div><p class="mini-caption">El anticipo no es reembolsable si el cliente no se presenta sin el aviso previsto. Las reservas sin pago suficiente quedan pendientes.</p><div class="dashboard-notice">Los saldos y anticipos se registran en el navegador de este dispositivo, no en una cuenta bancaria.</div></div></aside>
       </div><section class="panel section-gap"><div class="panel-head"><div><h2>Nómina de reservas</h2><p>${arr.length} reservas registradas en este navegador</p></div></div>${arr.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Huésped</th><th>Llegada / salida</th><th>Habitación</th><th>Total / anticipo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${arr.map(b=>`<tr><td><strong>${esc(b.name)}</strong><br><span class="mini-caption">${esc(b.phone)}</span></td><td>${datePretty(b.arrival)}<br><span class="mini-caption">${datePretty(b.departure)}</span></td><td>${esc(LABELS[b.type])}<br><span class="mini-caption">${esc(roomOf(b.roomId)?.number||'Por asignar')}</span></td><td><strong>${money(b.total)}</strong><br><span class="mini-caption">Anticipo ${money(b.advance)}</span></td><td>${tag(({pendiente:'Pendiente',confirmada:'Confirmada',alojada:'Alojada',finalizada:'Finalizada',cancelada:'Cancelada'})[b.status]||b.status,b.status==='confirmada'?'success':b.status==='pendiente'?'warning':b.status==='cancelada'?'danger':'')}</td><td><div class="table-actions">${['pendiente','confirmada'].includes(b.status)?btn('Ingresar','checkin-booking','btn-light btn-sm',`data-id="${esc(b.id)}"`)+btn('Cancelar','cancel-booking','btn-danger btn-sm',`data-id="${esc(b.id)}"`):'—'}</div></td></tr>`).join('')}</tbody></table></div>`:noRows('No hay reservas. Utilice el formulario para crear la primera.')}</section>`;
@@ -255,8 +381,8 @@
     const history=db.stays.filter(x=>x.status==='finalizada').slice().reverse().slice(0,6);
     return head('Recepción / cierre','Salidas y cobros','Revise la cuenta, registre abonos y libere habitaciones para limpieza.',btn('Ver habitaciones','go-habitaciones','btn-secondary'))+
     `<div class="two-col"><section class="panel"><div class="panel-head"><div><h2>Habitaciones ocupadas</h2><p>${stays.length} estadías en curso</p></div></div><div class="panel-body checkout-list">${stays.length?stays.map(x=>`<div class="checkout-item"><div class="room-no">${esc(roomOf(x.roomId)?.number||'—')}</div><div class="flex-grow"><strong>${esc(guestName(guestOf(x.guestId)))}</strong><small>Salida: ${datePretty(x.departure)} · saldo ${money(dueOf(x))}</small></div><button type="button" class="btn ${s?.id===x.id?'btn-primary':'btn-secondary'} btn-sm" data-action="select-stay" data-id="${esc(x.id)}">Gestionar</button></div>`).join(''):noRows('No hay huéspedes alojados actualmente.')}</div></section>
-    <aside class="panel"><div class="panel-head"><div><h2>Liquidación de estadía</h2><p>Detalle y registro de cobro</p></div></div><div class="panel-body">${s?`<div class="summary-card"><div class="mini-caption">HABITACIÓN ${esc(roomOf(s.roomId)?.number||'—')}</div><div class="summary-price">${money(totalOf(s))}</div><div class="summary-pair"><span>Hospedaje</span><strong>${money(s.roomTotal)}</strong></div><div class="summary-pair"><span>Varios</span><strong>${money(extrasOf(s.id))}</strong></div><div class="summary-pair"><span>Abonado</span><strong>${money(paidOf(s))}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong class="${dues>0?'text-red':'text-green'}">${money(dues)}</strong></div></div>
-      <form id="payment-form" class="section-gap"><input type="hidden" name="stayId" value="${esc(s.id)}"><div class="form-grid">${select('Método de pago','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}${select('Turno','shift',[['dia','Día'],['noche','Noche']],'dia')}${field('Valor a cobrar (USD)','amount',dues>0?dues:'',{type:'number',min:0.01,step:'0.01',required:true})}</div><div class="field hidden section-gap" id="payment-reference"><label for="reference">Código de transferencia *</label><input id="reference" name="reference" placeholder="Referencia bancaria"></div><button class="btn btn-secondary section-gap" type="submit" ${dues<=0?'disabled':''}>Registrar abono</button></form>
+    <aside class="panel"><div class="panel-head"><div><h2>Liquidación de estadía</h2><p>Detalle y registro de cobro</p></div></div><div class="panel-body">${s?`<div class="summary-card"><div class="mini-caption">HABITACIÓN ${esc(roomOf(s.roomId)?.number||'—')}</div><div class="summary-price">${money(totalOf(s))}</div><div class="summary-pair"><span>Hospedaje</span><strong>${money(s.roomTotal)}</strong></div><div class="summary-pair"><span>Varios</span><strong>${money(extrasOf(s.id))}</strong></div><div class="summary-pair"><span>Abonado</span><strong>${money(paidOf(s))}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong class="${dues>0?'text-red':'text-green'}">${money(dues)}</strong></div><div class="summary-pair"><span>Vuelto pendiente a favor del huésped</span><strong>${money(pendingChangeOf(s))}</strong></div></div>
+      ${renderPaymentForm(s)}
       <div class="separator"></div>${btn('Registrar check-out','checkout-stay','btn-primary',`data-id="${esc(s.id)}"`)}<div class="mini-caption section-gap">La salida pasa la habitación a <strong>pendiente de limpieza</strong>. Los saldos pendientes permanecen en el historial.</div>`:noRows('Seleccione una estadía para gestionar su cuenta.')}</div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Últimas salidas</h2><p>Historial local de huéspedes que finalizaron su estancia</p></div></div>${history.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Huésped</th><th>Habitación</th><th>Salida</th><th>Total</th><th>Saldo</th></tr></thead><tbody>${history.map(x=>`<tr><td><strong>${esc(guestName(guestOf(x.guestId)))}</strong></td><td>${esc(roomOf(x.roomId)?.number||'—')}</td><td>${datePretty(x.actualCheckout?.slice(0,10)||x.departure)}</td><td>${money(totalOf(x))}</td><td>${tag(money(dueOf(x)),dueOf(x)?'warning':'success')}</td></tr>`).join('')}</tbody></table></div>`:noRows('Aún no hay salidas registradas.')}</section>`;
   }
@@ -272,7 +398,7 @@
     return head('Recepción / ventas','Varios y productos','Venta directa en caja o cargo a una habitación, con control opcional de existencias.',btn('Inventario de productos','go-inventario','btn-secondary'))+
     `<section class="panel"><div class="panel-head"><div><h2>Catálogo de precios</h2><p>Precios transcritos del cartel proporcionado; sin precio visible en helados y lavandería.</p></div><div class="filters"><select id="filter-product-category" aria-label="Filtrar categoría">${selectOptions([['todas','Todas las categorías'],...Object.entries(CATEGORIES)],ui.productCategory)}</select><span class="mini-caption">${filtered.length} productos. Seleccione uno para agregarlo a la venta.</span></div><div class="product-catalog-grid">${filtered.map(p=>`<button class="product-item" type="button" data-action="pick-product" data-id="${esc(p.id)}"><strong>${esc(p.name)}</strong><small>${esc(catName(p.category))}</small><span class="price">${p.price===null?'Precio sin definir':money(p.price)}</span><small>Stock: ${p.stock===null?'pendiente de conteo':p.stock}</small></button>`).join('')}</div></section>
     <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Registrar venta de un producto</h2><p>Venta de mostrador o consumo cargado al huésped</p></div></div><div class="panel-body"><form id="extra-form"><div class="form-grid cols-2">
-      ${select('Destino del consumo','stayId',destinations(),'caja')}
+      ${select('Destino del consumo','stayId',destinations(),ui.extraTarget||'caja')}
       ${select('Producto','productId',[['','Seleccione el producto'],...db.products.slice().sort(sortProduct).map(p=>[p.id,`${catName(p.category)} · ${p.name}`])],'','required')}
       ${field('Cantidad','quantity','1',{type:'number',min:1,max:1000,step:1,required:true})}
       <div class="field"><label>Importe</label><div class="readonly-info" id="extra-preview">Seleccione un producto</div></div>
@@ -280,17 +406,17 @@
       ${select('Turno','shift',shiftOptions,'dia')}
       ${field('Código de transferencia (si aplica)','reference','',{placeholder:'Referencia bancaria'})}
       ${field('Encargado de turno','operator','',{placeholder:'Nombre del trabajador'})}
-      </div><div class="dashboard-notice">Si elige una habitación ocupada, el importe se agrega a la cuenta del huésped y <strong>no entra en caja hasta que se cobre</strong>. Si elige venta directa, se contabiliza inmediatamente por su forma de pago.</div><div class="form-actions"><button class="btn btn-primary" type="submit">Registrar consumo / venta</button></div></form></div></section>
+      </div>${cashChangeFields('extra')}<div class="dashboard-notice">Si elige una habitación ocupada, el importe se agrega a la cuenta del huésped y <strong>no entra en caja hasta que se cobre</strong>. Si elige venta directa, se contabiliza inmediatamente por su forma de pago.</div><div class="form-actions"><button class="btn btn-primary" type="submit">Registrar consumo / venta</button></div></form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Cargos adicionales</h2><p>Lavandería, helados sin precio definido y otros servicios</p></div></div><div class="panel-body"><form id="manual-extra-form"><div class="form-grid">
       ${field('Concepto','name','',{required:true,placeholder:'Ej. Lavandería, helado de coco, minibar...'})}
       ${select('Categoría','category',[['otros','Otros / lavandería'],['helados','Helados'],['bebidas','Bebidas'],['confiteria','Confitería'],['aseo','Aseo personal']],'otros')}
-      ${select('Destino','stayId',destinations(),'caja')}
+      ${select('Destino','stayId',destinations(),ui.extraTarget||'caja')}
       ${field('Importe total (USD)','amount','',{required:true,type:'number',min:0.01,step:'0.01',placeholder:'0.00'})}
       ${select('Forma de pago si es directa','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
       ${select('Turno','shift',shiftOptions,'dia')}
       ${field('Referencia de transferencia (si aplica)','reference','',{placeholder:'Referencia bancaria'})}
       ${field('Encargado','operator','',{placeholder:'Nombre del trabajador'})}
-      </div><button class="btn btn-secondary section-gap" type="submit">Registrar cobro adicional</button></form></div></aside></div>
+      </div>${cashChangeFields('manual')}<button class="btn btn-secondary section-gap" type="submit">Registrar cobro adicional</button></form></div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Registro de ventas</h2><p>${sold.length} operaciones · ${money(amount)} facturado, con cargos a habitaciones y ventas cobradas</p></div></div>${sold.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th>Destino</th><th>Categoría / producto</th><th>Cantidad</th><th>Importe</th><th>Cobro</th></tr></thead><tbody>${sold.slice(0,150).map(x=>`<tr><td>${timePretty(x.createdAt)}</td><td>${x.stayId?'Hab. '+esc(roomOf(stayOf(x.stayId)?.roomId)?.number||'—'):'Caja'}</td><td>${esc(catName(x.category))}<br><strong>${esc(x.productName)}</strong></td><td>${x.quantity}</td><td><strong>${money(x.price*x.quantity)}</strong></td><td>${x.stayId?'Pendiente en cuenta':x.method==='transferencia'?'Transferencia':'Efectivo'}</td></tr>`).join('')}</tbody></table></div>`:noRows('Aún no se registran ventas ni consumos.')}</section>`;
   }
   function renderStock(){
@@ -313,16 +439,18 @@
   function cashItems(date,shift){
     const items=[];
     const same=(stamp,turn)=>localDateOf(stamp)===date&&(turn||'dia')===shift;
-    for(const b of db.reservations)if(b.advance>0&&same(b.createdAt,b.shift))items.push({group:'Hotel (anticipos)',method:b.advanceMethod||'efectivo',amount:b.advance,concept:'Anticipo de reserva'});
-    for(const stay of db.stays)for(const pay of stay.payments||[])if(same(pay.createdAt,pay.shift))items.push({group:'Hotel (cobros de estadía)',method:pay.method,amount:pay.amount,concept:'Hab. '+(roomOf(stay.roomId)?.number||'—')});
-    for(const e of db.extras)if(paidDirect(e)&&same(e.createdAt,e.shift))items.push({group:e.category==='helados'?'Helados':e.category==='otros'?'Adicionales / servicios':'Varios',method:e.method,amount:e.price*e.quantity,concept:e.productName});
+    for(const b of db.reservations)if(b.advance>0&&same(b.createdAt,b.shift))items.push({group:'Hotel (anticipos)',method:b.advanceMethod||'efectivo',amount:b.advanceMethod==='efectivo'?Number(b.cashTendered??b.advance):b.advance,credited:b.advance,concept:'Anticipo de reserva'});
+    for(const stay of db.stays)for(const pay of stay.payments||[])if(same(pay.createdAt,pay.shift))items.push({group:'Hotel (cobros de estadía)',method:pay.method,amount:pay.method==='efectivo'?Number(pay.cashTendered??pay.amount):pay.amount,credited:pay.amount,concept:'Hab. '+(roomOf(stay.roomId)?.number||'—')});
+    for(const e of db.extras)if(paidDirect(e)&&same(e.createdAt,e.shift))items.push({group:e.category==='helados'?'Helados':e.category==='otros'?'Adicionales / servicios':'Varios',method:e.method,amount:e.method==='efectivo'?Number(e.cashTendered??e.price*e.quantity):e.price*e.quantity,credited:asMoney(e.price*e.quantity),concept:e.productName});
     return items;
   }
   function cashTotals(date,shift){
-    const items=cashItems(date,shift),out=db.cashMovements.filter(m=>m.date===date&&m.shift===shift).reduce((sum,m)=>sum+Number(m.amount),0);
+    const items=cashItems(date,shift),otherOut=db.cashMovements.filter(m=>m.date===date&&m.shift===shift).reduce((sum,m)=>sum+Number(m.amount),0);
+    const changeGiven=asMoney(changeMovements().filter(x=>x.owner.changeStatus==='dado'&&x.owner.changeDeliveredAt&&localDateOf(x.owner.changeDeliveredAt)===date&&(x.owner.changeDeliveredShift||x.owner.shift||'dia')===shift).reduce((sum,x)=>sum+Number(x.owner.cashChange||0),0));
+    const changePendingTotal=asMoney(changeMovements().reduce((sum,x)=>sum+changePending(x.owner),0));
     const total=method=>asMoney(items.filter(e=>e.method===method).reduce((sum,e)=>sum+Number(e.amount),0));
     const groups=['Hotel (anticipos)','Hotel (cobros de estadía)','Varios','Helados','Adicionales / servicios'].map(label=>({label,efectivo:asMoney(items.filter(e=>e.group===label&&e.method==='efectivo').reduce((s,e)=>s+e.amount,0)),transferencia:asMoney(items.filter(e=>e.group===label&&e.method==='transferencia').reduce((s,e)=>s+e.amount,0))}));
-    return {items,groups,cash:total('efectivo'),transfer:total('transferencia'),out:asMoney(out)};
+    return {items,groups,cash:total('efectivo'),transfer:total('transferencia'),out:asMoney(otherOut+changeGiven),otherOut:asMoney(otherOut),changeGiven,changePendingTotal};
   }
   function renderCash(){
     const date=ui.cashDate||today(),shift=ui.cashShift||'dia',sum=cashTotals(date,shift),prev=db.closures.find(c=>c.date===date&&c.shift===shift);
@@ -332,14 +460,17 @@
     const float=Number(draft.float??prev?.float??0),expected=asMoney(float+sum.cash-sum.out);
     return head('Recepción / control financiero','Cierre de caja por turno','Consolidado de cobros de hospedaje, productos, helados, lavandería y gastos.',btn('Exportar reporte CSV','export-cash','btn-secondary'))+
     `<div class="panel"><div class="panel-head"><div><h2>Seleccionar jornada</h2><p>Se muestran únicamente los cobros del turno indicado</p></div></div><div class="panel-body"><div class="form-grid cols-3">${field('Fecha de cierre','cash-date',date,{type:'date',id:'cash-date'})}${select('Turno','cash-shift',shiftOptions,shift)}<div class="field"><label>Moneda</label><div class="readonly-info">USD · Dólares</div></div></div></div></div>
-    <div class="metrics section-gap"><div class="metric"><div class="metric-top"><span class="metric-title">Entradas en efectivo</span></div><div class="metric-value small-metric">${money(sum.cash)}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Transferencias</span></div><div class="metric-value small-metric">${money(sum.transfer)}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Gastos / retiros</span></div><div class="metric-value small-metric">${money(sum.out)}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Consumos a habitaciones</span></div><div class="metric-value small-metric">${money(pending)}</div><div class="metric-sub">No cobrados aquí</div></div></div>
-    <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Desglose de ingresos</h2><p>Venta del día por concepto y forma de cobro</p></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Concepto</th><th>Efectivo</th><th>Transferencia</th></tr></thead><tbody>${sum.groups.map(g=>`<tr><td>${esc(g.label)}</td><td>${money(g.efectivo)}</td><td>${money(g.transferencia)}</td></tr>`).join('')}<tr><td><strong>TOTAL COBRADO</strong></td><td><strong>${money(sum.cash)}</strong></td><td><strong>${money(sum.transfer)}</strong></td></tr></tbody></table></div><div class="panel-body"><h3>Últimos cobros del turno</h3>${sum.items.length?sum.items.slice().reverse().slice(0,12).map(x=>`<div class="movement-row"><div><strong>${esc(x.concept)}</strong><div class="mini-caption">${esc(x.group)} · ${esc(x.method)}</div></div><strong>${money(x.amount)}</strong></div>`).join(''):noRows('No hay cobros en este turno.')}</div></section>
+    <div class="metrics section-gap"><div class="metric"><div class="metric-top"><span class="metric-title">Entradas en efectivo</span></div><div class="metric-value small-metric">${money(sum.cash)}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Transferencias</span></div><div class="metric-value small-metric">${money(sum.transfer)}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Salidas en efectivo (incluye vueltos)</span></div><div class="metric-value small-metric">${money(sum.out)}</div><div class="metric-sub">Vueltos entregados: ${money(sum.changeGiven)}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Consumos a habitaciones</span></div><div class="metric-value small-metric">${money(pending)}</div><div class="metric-sub">No cobrados aquí</div></div></div>
+    <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Desglose de ingresos</h2><p>Venta del día por concepto y forma de cobro</p></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Concepto</th><th>Efectivo</th><th>Transferencia</th></tr></thead><tbody>${sum.groups.map(g=>`<tr><td>${esc(g.label)}</td><td>${money(g.efectivo)}</td><td>${money(g.transferencia)}</td></tr>`).join('')}<tr><td><strong>EFECTIVO / TRANSFERENCIA RECIBIDOS</strong></td><td><strong>${money(sum.cash)}</strong></td><td><strong>${money(sum.transfer)}</strong></td></tr><tr><td>Vuelto entregado (salida de efectivo)</td><td>−${money(sum.changeGiven)}</td><td>—</td></tr><tr><td>Otros retiros / gastos</td><td>−${money(sum.otherOut)}</td><td>—</td></tr></tbody></table></div><div class="panel-body"><h3>Últimos cobros del turno</h3>${sum.items.length?sum.items.slice().reverse().slice(0,12).map(x=>`<div class="movement-row"><div><strong>${esc(x.concept)}</strong><div class="mini-caption">${esc(x.group)} · ${esc(x.method)}</div></div><strong>${money(x.amount)}</strong></div>`).join(''):noRows('No hay cobros en este turno.')}</div></section>
     <aside class="panel"><div class="panel-head"><div><h2>Arqueo y cierre</h2><p>Compara efectivo esperado contra contado</p></div></div><div class="panel-body"><form id="cash-close-form"><div class="form-grid">
     ${field('Encargado','operator',draft.operator??prev?.operator??'',{required:true,placeholder:'Nombre de quien cierra caja'})}
     ${field('Fondo inicial / cambio (USD)','float',draft.float??prev?.float??0,{type:'number',required:true,min:0,step:'0.01'})}
     ${field('Efectivo contado al cierre (USD)','counted',draft.counted??prev?.counted??'',{type:'number',required:true,min:0,step:'0.01'})}
     ${field('Observaciones','notes',draft.notes??prev?.notes??'',{textarea:true,placeholder:'Diferencias, incidencias, justificaciones...'})}
-    </div><div class="summary-card section-gap"><div class="summary-pair"><span>Fondo inicial</span><strong id="cash-float-preview">${money(float)}</strong></div><div class="summary-pair"><span>Entradas efectivo</span><strong>${money(sum.cash)}</strong></div><div class="summary-pair"><span>Salidas efectivo</span><strong>${money(sum.out)}</strong></div><div class="summary-pair total"><span>EFECTIVO ESPERADO</span><strong id="cash-expected-preview">${money(expected)}</strong></div><div class="summary-pair"><span>Diferencia (contado − esperado)</span><strong id="cash-variance-preview">${Number.isFinite(Number(draft.counted??prev?.counted))?money(asMoney(Number(draft.counted??prev?.counted)-expected)):'Sin arqueo'}</strong></div></div><button type="submit" class="btn btn-primary section-gap">${prev?'Actualizar cierre guardado':'Guardar cierre de caja'}</button></form><div class="dashboard-notice">Las transferencias se muestran en reporte, pero no forman parte del efectivo físico. Las ventas cargadas a habitaciones no cuentan como cobradas hasta su pago.</div></div></aside></div>
+    </div><div class="summary-card section-gap"><div class="summary-pair"><span>Fondo inicial</span><strong id="cash-float-preview">${money(float)}</strong></div><div class="summary-pair"><span>Entradas efectivo</span><strong>${money(sum.cash)}</strong></div><div class="summary-pair"><span>Vueltos entregados</span><strong>${money(sum.changeGiven)}</strong></div><div class="summary-pair"><span>Otros gastos / retiros</span><strong>${money(sum.otherOut)}</strong></div><div class="summary-pair"><span>Vuelto pendiente de todos los turnos</span><strong class="text-red">${money(sum.changePendingTotal)}</strong></div><div class="summary-pair total"><span>EFECTIVO ESPERADO</span><strong id="cash-expected-preview">${money(expected)}</strong></div><div class="summary-pair"><span>Diferencia (contado − esperado)</span><strong id="cash-variance-preview">${Number.isFinite(Number(draft.counted??prev?.counted))?money(asMoney(Number(draft.counted??prev?.counted)-expected)):'Sin arqueo'}</strong></div></div><button type="submit" class="btn btn-primary section-gap">${prev?'Actualizar cierre guardado':'Guardar cierre de caja'}</button></form><div class="dashboard-notice">El efectivo recibido se suma completo. El vuelto entregado se descuenta como salida; el vuelto pendiente sigue físicamente en caja, pero es una obligación del hotel con el huésped. Las transferencias no forman parte del efectivo.</div></div></aside></div>
+    <section class="panel section-gap"><div class="panel-head"><div><h2>Vueltos pendientes de entregar</h2><p>Dinero a devolver al huésped o comprador · no es ingreso definitivo</p></div><strong class="text-red">${money(sum.changePendingTotal)}</strong></div><div class="panel-body">
+      ${changeMovements().filter(x=>changePending(x.owner)>0).length?changeMovements().filter(x=>changePending(x.owner)>0).map(x=>`<div class="account-line"><div><strong>${esc(x.label)}</strong><small>Vuelto pendiente: ${money(changePending(x.owner))}</small></div>${btn('Vuelto entregado','settle-change','btn-secondary btn-sm',`data-source="${esc(x.source)}" data-id="${esc(x.id)}"`)}</div>`).join(''):noRows('No hay vueltos pendientes.')}
+    </div></section>
     <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Registrar retiro o gasto de caja</h2><p>Por ejemplo, un gasto menor del turno</p></div></div><div class="panel-body"><form id="cash-out-form"><div class="form-grid">${select('Tipo','kind',[['gasto','Gasto'],['retiro','Retiro de efectivo']],'gasto')}${field('Monto (USD)','amount','',{required:true,type:'number',min:0.01,step:'0.01'})}${field('Motivo','note','',{required:true,placeholder:'Detalle del movimiento'})}${field('Encargado','operator','',{placeholder:'Trabajador'})}</div><button class="btn btn-secondary section-gap" type="submit">Registrar salida de efectivo</button></form></div></section>
     <section class="panel"><div class="panel-head"><div><h2>Historial de cierres</h2><p>Arqueos registrados en este navegador</p></div></div><div class="panel-body">${db.closures.length?db.closures.slice().reverse().slice(0,12).map(c=>`<div class="movement-row"><div><strong>${datePretty(c.date)} · ${c.shift==='noche'?'Noche':'Día'}</strong><div class="mini-caption">${esc(c.operator)} · esperado ${money(c.expected)}</div></div><strong class="${c.variance?'text-red':'text-green'}">${money(c.variance)}</strong></div>`).join(''):noRows('Todavía no se registran cierres de caja.')}</div></section></div>`;
   }
@@ -371,11 +502,14 @@
       const f=readForm('checkin-form'),n=getNightCount(f.arrival,f.departure),r=rate(f.type,f.breakfast),total=asMoney(n*r),adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=asMoney(f.paymentAmount);
       const mappings={'checkin-night-rate':r===null?'Por definir':money(r),'preview-rate':r===null?'Por definir':money(r),'preview-nights':n,'checkin-total':r===null?'Por definir':money(total),'preview-advance':money(adv),'preview-payment':money(paid),'preview-due':money(Math.max(0,total-adv-paid))};
       Object.entries(mappings).forEach(([id,val])=>{const el=document.getElementById(id);if(el)el.textContent=val;});
+      updateCashPreview('checkin-form','checkin',paid,f.paymentMethod);
     }
     const rForm=document.getElementById('reservation-form');
-    if(rForm){const f=readForm('reservation-form'),n=getNightCount(f.arrival,f.departure),r=rate(f.type,f.breakfast);for(const [id,val] of Object.entries({'reservation-rate':r===null?'Por definir':money(r),'reservation-nights':n+' noches','reservation-total':r===null?'Por definir':money(n*r),'reservation-deposit':r===null?'Por definir':money(n*r*.5)})){const el=document.getElementById(id);if(el)el.textContent=val;}}
+    if(rForm){const f=readForm('reservation-form'),n=getNightCount(f.arrival,f.departure),r=rate(f.type,f.breakfast);for(const [id,val] of Object.entries({'reservation-rate':r===null?'Por definir':money(r),'reservation-nights':n+' noches','reservation-total':r===null?'Por definir':money(n*r),'reservation-deposit':r===null?'Por definir':money(n*r*.5)})){const el=document.getElementById(id);if(el)el.textContent=val;}updateCashPreview('reservation-form','reservation',asMoney(f.advance||0),f.advanceMethod);}
     const xForm=document.getElementById('extra-form');
-    if(xForm){const f=readForm('extra-form'),p=productOf(f.productId);const el=document.getElementById('extra-preview');if(el)el.textContent=!p?'Seleccione un producto':p.price!==null&&Number(p.price)>0?money(Number(p.price)*(Number(f.quantity)||0)):'Precio sin configurar';}
+    if(xForm){const f=readForm('extra-form'),p=productOf(f.productId);const el=document.getElementById('extra-preview');if(el)el.textContent=!p?'Seleccione un producto':p.price!==null&&Number(p.price)>0?money(Number(p.price)*(Number(f.quantity)||0)):'Precio sin configurar';updateCashPreview('extra-form','extra',asMoney(Number(p?.price||0)*Number(f.quantity||0)),f.method,f.stayId==='caja');}
+    const manual=document.getElementById('manual-extra-form');if(manual){const f=readForm('manual-extra-form');updateCashPreview('manual-extra-form','manual',asMoney(Number(f.amount||0)),f.method,f.stayId==='caja');}
+    const payment=document.getElementById('payment-form');if(payment){const f=readForm('payment-form');updateCashPreview('payment-form','payment',asMoney(Number(f.amount||0)),f.method);}
     const cForm=document.getElementById('cash-close-form');if(cForm){const f=readForm('cash-close-form'),sum=cashTotals(ui.cashDate||today(),ui.cashShift||'dia'),flt=Number(f.float||0),expected=asMoney(flt+sum.cash-sum.out),counted=String(f.counted??'').trim();for(const [id,v] of Object.entries({'cash-float-preview':money(flt),'cash-expected-preview':money(expected),'cash-variance-preview':counted===''?'Sin arqueo':money(asMoney(Number(counted)-expected))})){const el=document.getElementById(id);if(el)el.textContent=v;}}
   }
   function refreshRoomSelect(formType){
@@ -430,9 +564,11 @@
     const total=asMoney(n*rate(f.type,f.breakfast)),adv=asMoney(b?.advance||0),amount=Number(f.paymentAmount);
     if(!Number.isFinite(amount)||amount<0||adv+amount>total+.001){toast('Revise el importe pagado; no puede exceder el total de hospedaje.','error');return;}
     if(f.paymentMethod==='transferencia'&&amount>0&&!String(f.transferCode||'').trim()){toast('Ingrese el código de la transferencia bancaria.','error');return;}
+    const tender=resolveTendered(f.cashTendered,f.paymentMethod,amount,f.changeStatus);if(tender.error){toast(tender.error,'error');return;}
     if(f.invoice==='si'&&(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim())){toast('Complete los cuatro datos de facturación.','error');return;}
     const guest=saveGuest(g);
-    const stay={id:uid('stay'),guestId:guest.id,roomId:r.id,type:f.type,arrival:f.arrival,departure:f.departure,breakfast:f.breakfast,roomRate:rate(f.type,f.breakfast),roomTotal:total,advance:adv,payments:amount>0?[{id:uid('pay'),amount:asMoney(amount),method:f.paymentMethod,reference:f.paymentMethod==='transferencia'?f.transferCode.trim():'',shift:f.shift||'dia',createdAt:new Date().toISOString()}]:[],invoiceRequested:f.invoice==='si',invoiceDetails:f.invoice==='si'?{name:f.invoiceName.trim(),identification:f.invoiceId.trim(),address:f.invoiceAddress.trim(),email:f.invoiceEmail.trim()}:null,notes:String(f.notes||'').trim(),reservationId:b?.id||null,status:'activa',createdAt:new Date().toISOString()};
+    const checkinAt=new Date().toISOString();
+    const stay={id:uid('stay'),guestId:guest.id,roomId:r.id,type:f.type,arrival:f.arrival,departure:f.departure,breakfast:f.breakfast,roomRate:rate(f.type,f.breakfast),roomTotal:total,advance:adv,payments:amount>0?[paidCashRecord({id:uid('pay'),amount:asMoney(amount),method:f.paymentMethod,reference:f.paymentMethod==='transferencia'?f.transferCode.trim():'',shift:f.shift||'dia',createdAt:checkinAt},tender,checkinAt,f.shift||'dia')]:[],invoiceRequested:f.invoice==='si',invoiceDetails:f.invoice==='si'?{name:f.invoiceName.trim(),identification:f.invoiceId.trim(),address:f.invoiceAddress.trim(),email:f.invoiceEmail.trim()}:null,notes:String(f.notes||'').trim(),reservationId:b?.id||null,status:'activa',createdAt:new Date().toISOString()};
     db.stays.push(stay);r.status='ocupada';if(b)b.status='alojada';
     persist();ui.selectedRoomId=r.id;ui.selectedStayId=stay.id;ui.checkinDraft=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;ui.prefillBookingId=null;
     navigate('habitaciones');toast('Ingreso registrado: habitación '+r.number+'. Saldo '+money(dueOf(stay))+'.');
@@ -446,7 +582,9 @@
     const total=asMoney(n*rate(f.type,f.breakfast));
     if(advance>0&&f.advanceMethod==='transferencia'&&!String(f.advanceRef||'').trim()){toast('Ingrese referencia de la transferencia del anticipo.','error');return;}
     if(!Number.isFinite(advance)||advance<0||advance>total){toast('El anticipo no puede ser negativo ni superar el total.','error');return;}
-    const b={id:uid('booking'),name,phone,document,arrival:f.arrival,departure:f.departure,type:f.type,roomId:f.roomId||'',breakfast:f.breakfast,total,advance:asMoney(advance),status:total>0&&advance>=asMoney(total*.5)?'confirmada':'pendiente',advanceMethod:f.advanceMethod||'efectivo',advanceRef:String(f.advanceRef||'').trim(),shift:f.shift||'dia',notes:String(f.notes||'').trim(),createdAt:new Date().toISOString()};
+    const tender=resolveTendered(f.cashTendered,f.advanceMethod,advance,f.changeStatus);if(tender.error){toast(tender.error,'error');return;}
+    const bookingAt=new Date().toISOString();
+    const b=paidCashRecord({id:uid('booking'),name,phone,document,arrival:f.arrival,departure:f.departure,type:f.type,roomId:f.roomId||'',breakfast:f.breakfast,total,advance:asMoney(advance),status:total>0&&advance>=asMoney(total*.5)?'confirmada':'pendiente',advanceMethod:f.advanceMethod||'efectivo',advanceRef:String(f.advanceRef||'').trim(),shift:f.shift||'dia',notes:String(f.notes||'').trim(),createdAt:bookingAt},tender,bookingAt,f.shift||'dia');
     db.reservations.push(b);persist();ui.reservationDraft=null;render();toast('Reserva guardada como '+b.status+'.');
   }
   function processGuest(){
@@ -459,7 +597,9 @@
     if(!s||s.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
     if(!Number.isFinite(amount)||amount<=0||amount>dueOf(s)+.001){toast('El cobro debe ser mayor que cero y no superar el saldo.','error');return;}
     if(f.method==='transferencia'&&!String(f.reference||'').trim()){toast('Debe registrar el código de transferencia.','error');return;}
-    s.payments.push({id:uid('pay'),amount:asMoney(amount),method:f.method,shift:f.shift||'dia',reference:f.method==='transferencia'?f.reference.trim():'',createdAt:new Date().toISOString()});
+    const tender=resolveTendered(f.cashTendered,f.method,amount,f.changeStatus);if(tender.error){toast(tender.error,'error');return;}
+    const paidAt=new Date().toISOString();
+    s.payments.push(paidCashRecord({id:uid('pay'),amount:asMoney(amount),method:f.method,shift:f.shift||'dia',reference:f.method==='transferencia'?f.reference.trim():'',createdAt:paidAt},tender,paidAt,f.shift||'dia'));
     persist();render();toast('Abono de '+money(amount)+' registrado.');
   }
   function appendExtra(f,product){
@@ -471,7 +611,9 @@
     if(!stayId&&f.method==='transferencia'&&!String(f.reference||'').trim()){toast('La transferencia necesita un código de referencia.','error');return false;}
     if(product.stock!==null&&product.stock<q){toast('No hay existencias suficientes de '+product.name+'.','error');return false;}
     const createdAt=new Date().toISOString();
-    const e={id:uid('extra'),stayId,productId:product.id,productName:product.name,category:product.category||'otros',quantity:q,price:asMoney(product.price),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt};
+    const tender=stayId?{received:asMoney(product.price*q),change:0,status:'no_aplica'}:resolveTendered(f.cashTendered,f.method,asMoney(product.price*q),f.changeStatus);
+    if(tender.error){toast(tender.error,'error');return false;}
+    const e=paidCashRecord({id:uid('extra'),stayId,productId:product.id,productName:product.name,category:product.category||'otros',quantity:q,price:asMoney(product.price),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt},tender,createdAt,f.shift||'dia');
     db.extras.push(e);
     if(product.stock!==null){product.stock-=q;db.stockMoves.push({id:uid('stock'),productId:product.id,productName:product.name,mode:'venta',quantity:q,shift:f.shift||'dia',operator:e.operator,createdAt,note:stayId?'Cargo a habitación':'Venta directa'});}
     persist();return true;
@@ -486,7 +628,10 @@
     if(!name||name.length>80||!Number.isFinite(amount)||amount<=0||amount>100000){toast('Complete un concepto y un importe válido.','error');return;}
     if(stayId&&stayOf(stayId)?.status!=='activa'){toast('Seleccione una habitación ocupada.','error');return;}
     if(!stayId&&f.method==='transferencia'&&!String(f.reference||'').trim()){toast('La transferencia necesita referencia.','error');return;}
-    db.extras.push({id:uid('extra'),stayId,productId:'manual',productName:name,category:CATEGORIES[f.category]?f.category:'otros',quantity:1,price:asMoney(amount),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt:new Date().toISOString()});
+    const tender=stayId?{received:asMoney(amount),change:0,status:'no_aplica'}:resolveTendered(f.cashTendered,f.method,amount,f.changeStatus);
+    if(tender.error){toast(tender.error,'error');return;}
+    const soldAt=new Date().toISOString();
+    db.extras.push(paidCashRecord({id:uid('extra'),stayId,productId:'manual',productName:name,category:CATEGORIES[f.category]?f.category:'otros',quantity:1,price:asMoney(amount),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt:soldAt},tender,soldAt,f.shift||'dia'));
     persist();render();toast('Cargo adicional registrado.');
   }
   function processStock(){
@@ -510,7 +655,7 @@
     const f=readForm('cash-close-form'),date=ui.cashDate||today(),shift=ui.cashShift||'dia',float=Number(f.float),counted=Number(f.counted),operator=String(f.operator||'').trim();
     if(!operator||!Number.isFinite(float)||float<0||!Number.isFinite(counted)||counted<0){toast('Complete encargado, fondo y efectivo contado.','error');return;}
     const sum=cashTotals(date,shift),expected=asMoney(float+sum.cash-sum.out);
-    const close={date,shift,operator,float:asMoney(float),counted:asMoney(counted),cash:sum.cash,transfer:sum.transfer,out:sum.out,expected,variance:asMoney(counted-expected),notes:String(f.notes||'').trim(),createdAt:new Date().toISOString()};
+    const close={date,shift,operator,float:asMoney(float),counted:asMoney(counted),cash:sum.cash,transfer:sum.transfer,out:sum.out,changeGiven:sum.changeGiven,changePendingAtClose:sum.changePendingTotal,expected,variance:asMoney(counted-expected),notes:String(f.notes||'').trim(),createdAt:new Date().toISOString()};
     const i=db.closures.findIndex(c=>c.date===date&&c.shift===shift);
     if(i>=0&&!window.confirm('Ya existe un cierre para esta fecha y turno. ¿Desea actualizarlo con el arqueo actual?'))return;
     if(i>=0)db.closures[i]={...db.closures[i],...close};else db.closures.push({id:uid('closing'),...close});
@@ -518,7 +663,7 @@
   }
   function exportCash(){
     const date=ui.cashDate||today(),shift=ui.cashShift||'dia',summary=cashTotals(date,shift),closed=db.closures.find(c=>c.date===date&&c.shift===shift);
-    const rows=[['Hotel Unicornio - cierre de caja','Fecha',date,'Turno',shift],['Concepto','Efectivo USD','Transferencia USD'],...summary.groups.map(g=>[g.label,g.efectivo,g.transferencia]),['TOTAL COBRADO',summary.cash,summary.transfer],['Gastos / retiros',summary.out,''],['Fondo inicial',closed?.float??'',''],['Efectivo esperado',closed?.expected??'',''],['Efectivo contado',closed?.counted??'',''],['Diferencia',closed?.variance??'',''],['Encargado',closed?.operator??'',''],['Observaciones',closed?.notes??'','']];
+    const rows=[['Hotel Unicornio - cierre de caja','Fecha',date,'Turno',shift],['Concepto','Efectivo USD','Transferencia USD'],...summary.groups.map(g=>[g.label,g.efectivo,g.transferencia]),['EFECTIVO ENTREGADO / TRANSFERENCIAS',summary.cash,summary.transfer],['Vueltos entregados',summary.changeGiven,''],['Otros gastos / retiros',summary.otherOut,''],['Total salidas de efectivo',summary.out,''],['Vueltos pendientes actuales',summary.changePendingTotal,''],['Fondo inicial',closed?.float??'',''],['Efectivo esperado',closed?.expected??'',''],['Efectivo contado',closed?.counted??'',''],['Diferencia',closed?.variance??'',''],['Encargado',closed?.operator??'',''],['Observaciones',closed?.notes??'','']];
     downloadCsv(rows,'cierre-caja-hotel-unicornio-'+date+'-'+shift+'.csv');
   }
   function downloadCsv(rows,filename){
@@ -593,6 +738,18 @@
       case 'pick-product':{const sel=document.querySelector('#extra-form [name=productId]');if(sel){sel.value=id;updatePricing();sel.closest('.panel')?.scrollIntoView({behavior:'smooth',block:'center'});}break;}
       case 'lookup-guest':lookupGuest(el.dataset.scope);break;
       case 'select-room':ui.selectedRoomId=id;navigate('habitaciones');break;
+      case 'close-room-account':
+        if(e.target.closest('[data-account-dialog]')&&!e.target.closest('.account-close'))break;
+        ui.selectedRoomId=null;render();break;
+      case 'room-add-extras':ui.extraTarget=id;navigate('varios');break;
+      case 'room-go-checkout':ui.selectedStayId=id;ui.selectedRoomId=null;navigate('salidas');break;
+      case 'settle-change':{
+        const r=changeMovements().find(x=>x.source===el.dataset.source&&x.id===id);
+        if(!r||r.owner.changeStatus!=='pendiente'){toast('El vuelto ya no está pendiente.','error');break;}
+        if(!window.confirm('¿Confirma que entregó físicamente '+money(r.owner.cashChange)+' de vuelto? Se descontará de la caja del turno actual.'))break;
+        r.owner.changeStatus='dado';r.owner.changeDeliveredAt=new Date().toISOString();r.owner.changeDeliveredShift=ui.cashShift||'dia';
+        persist();render();toast('Vuelto entregado: '+money(r.owner.cashChange)+'. La salida se registró en caja.');break;
+      }
       case 'start-room-checkin':{
         const room=roomOf(id);if(!room||room.status!=='disponible'){toast('Esta habitación no está disponible.','error');break;}
         ui.prefillBookingId=null;ui.checkinDraft={...initialCheckinDraft(),type:room.type==='flex_aire'?'individual':room.type==='flex_ventilador'?'individual_ventilador':room.type,roomId:room.id};ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
@@ -621,6 +778,7 @@
         const s=stayOf(id);if(!s||s.status!=='activa')break;
         const due=dueOf(s);
         if(due>0&&!window.confirm('La cuenta tiene un saldo pendiente de '+money(due)+'. ¿Registrar la salida de todas maneras?'))break;
+        if(pendingChangeOf(s)>0&&!window.confirm('Queda vuelto pendiente de '+money(pendingChangeOf(s))+' a favor del huésped. ¿Registrar salida de todas maneras? El pendiente permanecerá en caja.'))break;
         const room=roomOf(s.roomId);if(room)room.status='limpieza';s.status='finalizada';s.actualCheckout=new Date().toISOString();if(s.reservationId){const b=reservationOf(s.reservationId);if(b)b.status='finalizada';}
         persist();ui.selectedStayId=null;render();toast('Salida registrada. Habitación '+(room?.number||'')+' pendiente de limpieza.');break;
       }
@@ -643,7 +801,7 @@
     const target=e.target;
     if(target.closest('#checkin-form')){ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};updatePricing();}
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
-    if(target.closest('#extra-form')||target.closest('#cash-close-form'))updatePricing();
+    if(target.closest('#extra-form')||target.closest('#manual-extra-form')||target.closest('#cash-close-form')||target.closest('#payment-form'))updatePricing();
   });
   document.addEventListener('change',e=>{
     const el=e.target;
@@ -665,6 +823,7 @@
       updatePricing();return;
     }
     if(el.closest('#payment-form')&&el.name==='method')document.getElementById('payment-reference')?.classList.toggle('hidden',el.value!=='transferencia');
+    if(el.closest('#payment-form')||el.closest('#extra-form')||el.closest('#manual-extra-form'))updatePricing();
   });
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
@@ -677,7 +836,7 @@
     else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();render();}
     else if(id==='guest-form'){e.preventDefault();ui.lookup.huespedes='';ui.lookupMessage.huespedes='';ui.lookupResult.huespedes=false;render();}
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
   document.getElementById('year').textContent=String(new Date().getFullYear());
   document.getElementById('current-date').textContent=new Intl.DateTimeFormat('es-EC',{weekday:'short',day:'numeric',month:'long',year:'numeric'}).format(new Date());
   if(window.hotelCloud?.ready){
