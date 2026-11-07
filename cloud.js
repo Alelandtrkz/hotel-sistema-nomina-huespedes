@@ -178,6 +178,13 @@
         exit.className="btn btn-secondary";exit.style.padding="8px 10px";exit.style.fontSize="12px";
         exit.addEventListener("click",async function(){await CLIENT.auth.signOut();window.location.reload();});
         actions.appendChild(exit);
+        var test=document.createElement("button");
+        test.type="button";test.id="cloud-test";
+        test.textContent="Probar nube";test.className="btn btn-secondary";
+        test.style.padding="8px 10px";test.style.fontSize="12px";
+        test.title="Comprueba lectura y escritura sin crear huéspedes, reservas ni cobros";
+        test.addEventListener("click",runSyncDiagnostic);
+        actions.appendChild(test);
       }
       if(!uiLoaded) {
         uiLoaded=true;
@@ -195,6 +202,45 @@
         await CLIENT.auth.signOut();
       }
     }finally{booting=false;}
+  }
+  // Round-trip diagnostic: writes only the same snapshot, increasing the version.
+  // No customer profile, booking, stock movement or cash operation is created.
+  async function runSyncDiagnostic() {
+    var button=$id("cloud-test");
+    if(!ready||disabled||writing||pending){
+      window.alert("Todavía hay una sincronización pendiente. Vuelva a probar cuando diga Conectado.");
+      return;
+    }
+    if(button)button.disabled=true;
+    status("Probando nube...");
+    try {
+      var me=await CLIENT.auth.getUser();
+      if(me.error||!me.data?.user)throw new Error("La sesión no está activa.");
+      var current=await readState();
+      var remoteRevision=Number(current.revision);
+      if(remoteRevision!==revision) {
+        status("Actualización pendiente",true);
+        window.alert("Otro equipo actualizó los datos. Recargue esta página antes de realizar la prueba.");
+        return;
+      }
+      var result=await CLIENT.rpc("hotel_save_cloud_state",{
+        p_expected_revision:remoteRevision,
+        p_data:current.data
+      });
+      if(result.error)throw result.error;
+      var after=await readState();
+      if(Number(after.revision)!==Number(result.data) || Number(result.data)!==remoteRevision+1) {
+        throw new Error("La lectura de verificación no coincide con el guardado.");
+      }
+      revision=Number(result.data);
+      status("Prueba de sincronización OK");
+      window.alert("Prueba completada: lectura, escritura y relectura de Supabase correctas. Revisión "+remoteRevision+" → "+revision+". No se añadieron huéspedes, reservas ni movimientos económicos. En otro dispositivo abierto, la revisión se detectará al actualizar los datos.");
+    } catch(err) {
+      status("Error de sincronización",true);
+      window.alert("La prueba no se completó. "+(err.message||String(err))+". Informe este mensaje para corregir la conexión.");
+    } finally {
+      if(button)button.disabled=false;
+    }
   }
   function bindUI(callbacks){uiCallbacks=callbacks;}
   function plainState(data){
