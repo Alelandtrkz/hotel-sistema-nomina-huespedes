@@ -218,3 +218,10 @@
  .client-rooms-links{flex-direction:column;align-items:stretch;}
  .client-room-current{justify-content:center;}
 }
+
+/* Check-in v0.8 · cobro calculado y tarifas especiales autorizadas */
+.checkin-auto-pay{font-size:22px;font-weight:800;color:#214d38;border-color:#c6ddcb;background:#f2f9f4;}
+.discount-rule-warning{padding:13px 15px;margin-top:12px;background:#fff4e6;color:#8f4a13;border:1px solid #e9c48e;border-radius:10px;font-size:12px;line-height:1.6;font-weight:650;}
+.discount-rule-warning.hidden{display:none!important;}
+#checkin-payment-help{background:#eef6f1;padding:11px 13px;border-radius:9px;border:1px solid #d9e8dd;color:#496755;line-height:1.65;}
+#checkin-form #checkin-auto-payment{min-height:45px;display:flex;align-items:center;}

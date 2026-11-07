@@ -132,18 +132,19 @@ test('Anticipo reservado se descuenta una sola vez de la habitación principal',
  assert.equal(d.stays[0].reservationId,'book');
  assert.equal(d.stays[1].reservationId,null);
 });
-test('Abono parcial por transferencia se distribuye sin generar vuelto ni duplicar el pago',()=>{
+test('Transferencia de ingreso aplica todo el saldo sin permitir pago parcial manual',()=>{
  const d=setup();
  const form=bookingForm({paymentAmount:'25',paymentMethod:'transferencia',transferCode:'TEST-TRANSFER-001',cashTendered:''});
  const p=t.prepareCheckinGroup(form);
  assert.equal(p.error,null);
+ assert.equal(p.payment,50);
  assert.equal(p.items[0].payment,20);
- assert.equal(p.items[1].payment,5);
+ assert.equal(p.items[1].payment,30);
  assert.equal(p.items[0].tender.change,0);
- fake['checkin-form']=wrapForm(form );
+ fake['checkin-form']=wrapForm(form);
  t.processCheckin();
  assert.equal(t.dueOf(d.stays[0]),0);
- assert.equal(t.dueOf(d.stays[1]),25);
+ assert.equal(t.dueOf(d.stays[1]),0);
  assert.equal(d.stays[0].payments[0].reference,'TEST-TRANSFER-001');
  assert.equal(d.stays[1].payments[0].reference,'TEST-TRANSFER-001');
 });
@@ -170,5 +171,125 @@ test('Tarifas sin configurar se rechazan sin crear habitaciones',()=>{
  const p=t.prepareCheckinGroup(form);
  assert(p.error&&/tarifa/i.test(p.error));
  assert.equal(d.stays.length,0);
+});
+test('El formulario NO muestra un importe editable y ofrece Por cobrar + descuento',()=>{
+ const d=setup([]);
+ const html=t.renderCheckin();
+ assert(!html.includes('name="paymentAmount"'));
+ assert(html.includes('Por cobrar (tarifa normal)'));
+ assert(html.includes('precio con descuento'));
+ assert(html.includes('checkin-auto-payment'));
+});
+test('Por cobrar conserva el total pendiente y no registra dinero en caja',()=>{
+ const d=setup([]);
+ const form=bookingForm({paymentMethod:'por_cobrar',paymentAmount:'9999',cashTendered:'200'});
+ fake['checkin-form']=wrapForm(form);
+ const p=t.prepareCheckinGroup(form);
+ assert.equal(p.error,null);
+ assert.equal(p.payment,0);
+ assert.equal(p.tender.received,0);
+ t.processCheckin();
+ assert.equal(d.stays.length,1);
+ assert.equal(d.stays[0].payments.length,0);
+ assert.equal(t.dueOf(d.stays[0]),20);
+ const local=new Date().toISOString().slice(0,10);
+ assert.equal(t.cashTotals(local,'dia').cash,0);
+});
+test('Por cobrar con descuento registra saldo de tarifa reducida sin cobro',()=>{
+ const d=setup([]);
+ const form=bookingForm({paymentMethod:'por_cobrar_descuento'});
+ fake['checkin-form']=wrapForm(form);
+ t.processCheckin();
+ assert.equal(d.stays[0].roomRate,17);
+ assert.equal(d.stays[0].roomTotal,17);
+ assert.equal(d.stays[0].discountTotal,3);
+ assert.equal(d.stays[0].payments.length,0);
+ assert.equal(t.dueOf(d.stays[0]),17);
+});
+test('Tarifas de descuentos son exactamente las seis indicadas por recepción',()=>{
+ for(const [type,roomId,floor] of [
+  ['individual_ventilador','room-07',15],
+  ['matrimonial_ventilador','room-08',20],
+  ['individual','room-02',17],
+  ['matrimonial','room-02',27],
+  ['doble','room-03',27],
+  ['triple','room-04',37]
+ ]){
+  setup([]);
+  const f=bookingForm({type,roomId,paymentMethod:'por_cobrar_descuento'});
+  const estimate=t.checkinGroupEstimate(f);
+  assert.equal(estimate.items[0].nightly,floor,'Tarifa incorrecta: '+type);
+  assert.equal(estimate.items[0].total,floor,'Total incorrecto: '+type);
+ }
+});
+test('Ingreso de efectivo con descuento no deja campo manual y calcula vuelto exacto',()=>{
+ const d=setup([]);
+ const form=bookingForm({paymentMethod:'efectivo_descuento',paymentAmount:'0.01',cashTendered:'20',changeStatus:'dado'});
+ const p=t.prepareCheckinGroup(form);
+ assert.equal(p.payment,17);
+ assert.equal(p.tender.change,3);
+ fake['checkin-form']=wrapForm(form);
+ t.processCheckin();
+ assert.equal(d.stays[0].payments[0].amount,17);
+ assert.equal(d.stays[0].payments[0].cashTendered,20);
+ assert.equal(d.stays[0].payments[0].cashChange,3);
+ assert.equal(t.dueOf(d.stays[0]),0);
+});
+test('Varias habitaciones con descuento suman $44 (17 + 27) y $50 entregados devuelven $6 una vez',()=>{
+ const d=setup();
+ const form=bookingForm({paymentMethod:'efectivo_descuento',cashTendered:'50',changeStatus:'pendiente'});
+ const p=t.prepareCheckinGroup(form);
+ assert.equal(p.error,null);
+ assert.equal(p.total,44);
+ assert.equal(p.payment,44);
+ assert.equal(p.tender.change,6);
+ fake['checkin-form']=wrapForm(form);
+ t.processCheckin();
+ assert.equal(d.stays[0].roomRate,17);
+ assert.equal(d.stays[1].roomRate,27);
+ assert.equal(d.stays[0].payments[0].cashChange,6);
+ assert.equal(d.stays[1].payments[0].cashChange,0);
+ assert.equal(t.dueOf(d.stays[0]),0);
+ assert.equal(t.dueOf(d.stays[1]),0);
+});
+test('La tarifa con descuento NO se acepta si se solicita factura',()=>{
+ const d=setup([]);
+ const f=bookingForm({paymentMethod:'efectivo_descuento',invoice:'si',cashTendered:'17'});
+ const p=t.prepareCheckinGroup(f);
+ assert(p.error&&/factura/i.test(p.error));
+ fake['checkin-form']=wrapForm(f);
+ t.processCheckin();
+ assert.equal(d.guests.length,0);
+ assert.equal(d.stays.length,0);
+});
+test('La tarifa con descuento NO se acepta con desayuno',()=>{
+ const d=setup([]);
+ const f=bookingForm({paymentMethod:'por_cobrar_descuento',breakfast:'con'});
+ const p=t.prepareCheckinGroup(f);
+ assert(p.error&&/desayuno/i.test(p.error));
+});
+test('La tarifa con descuento NO modifica reservas confirmadas ni sus anticipos',()=>{
+ const d=setup([]);
+ d.reservations=[{id:'book',roomId:'room-02',type:'individual',breakfast:'sin',arrival:DATE,departure:NEXT,advance:10,status:'confirmada'}];
+ const f=bookingForm({paymentMethod:'efectivo_descuento',cashTendered:'17'});
+ const p=t.prepareCheckinGroup(f,d.reservations[0]);
+ assert(p.error&&/reserva/i.test(p.error));
+});
+test('El descuento no reduce importes de acompañantes, niños ni consumos',()=>{
+ const d=setup([]);
+ const f=bookingForm({paymentMethod:'por_cobrar_descuento'});
+ fake['checkin-form']=wrapForm(f);t.processCheckin();
+ const stay=d.stays[0];
+ stay.additionalPeople=[{category:'adulto',amount:10},{category:'nino',amount:5}];
+ assert.equal(stay.roomRate,17);
+ assert.equal(t.totalOf(stay),32);
+ assert.equal(t.dueOf(stay),32);
+});
+test('Tarifa de descuento nunca puede superar o alterar una tarifa configurada menor',()=>{
+ const d=setup([]);
+ d.config.rates.individual.sin=16;
+ const f=bookingForm({paymentMethod:'por_cobrar_descuento'});
+ assert.equal(t.checkinGroupEstimate(f).total,null);
+ assert(t.prepareCheckinGroup(f).error);
 });
 console.log('Pruebas en memoria con cédulas ficticias; no se escriben datos en Supabase.');
