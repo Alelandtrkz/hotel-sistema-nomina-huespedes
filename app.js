@@ -786,9 +786,26 @@
   function updatePricing(){
     const ci=document.getElementById('checkin-form');
     if(ci){
-      const f=readForm('checkin-form'),n=getNightCount(f.arrival,f.departure),r=rate(f.type,f.breakfast),total=asMoney(n*r),adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=asMoney(f.paymentAmount);
-      const mappings={'checkin-night-rate':r===null?'Por definir':money(r),'preview-rate':r===null?'Por definir':money(r),'preview-nights':n,'checkin-total':r===null?'Por definir':money(total),'preview-advance':money(adv),'preview-payment':money(paid),'preview-due':money(Math.max(0,total-adv-paid))};
+      const f=readForm('checkin-form'),estimate=checkinGroupEstimate(f),n=estimate.nights,
+        r=rate(f.type,f.breakfast),total=estimate.total,
+        adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=asMoney(f.paymentAmount);
+      const mappings={
+        'checkin-night-rate':r===null?'Por definir':money(r),
+        'preview-rate':r===null?'Por definir':money(r),
+        'preview-nights':n,
+        'checkin-total':total===null?'Por definir':money(total),
+        'preview-advance':money(adv),
+        'preview-payment':money(paid),
+        'preview-due':total===null?'Por definir':money(Math.max(0,total-adv-paid))
+      };
       Object.entries(mappings).forEach(([id,val])=>{const el=document.getElementById(id);if(el)el.textContent=val;});
+      const breakdown=document.getElementById('checkin-room-breakdown');
+      if(breakdown)breakdown.outerHTML=renderCheckinBreakdown(f);
+      for(const entry of estimate.items.slice(1)){
+        const rateEl=document.getElementById(entry.key+'-rate'),totalEl=document.getElementById(entry.key+'-total');
+        if(rateEl)rateEl.textContent=entry.nightly===null?'Por definir':money(entry.nightly);
+        if(totalEl)totalEl.textContent=entry.total===null?'Por definir':money(entry.total);
+      }
       updateCashPreview('checkin-form','checkin',paid,f.paymentMethod);
     }
     const rForm=document.getElementById('reservation-form');
@@ -821,13 +838,26 @@
     const cForm=document.getElementById('cash-close-form');if(cForm){const f=readForm('cash-close-form'),sum=cashTotals(ui.cashDate||today(),ui.cashShift||'dia'),flt=Number(f.float||0),expected=asMoney(flt+sum.cash-sum.out),counted=String(f.counted??'').trim();for(const [id,v] of Object.entries({'cash-float-preview':money(flt),'cash-expected-preview':money(expected),'cash-variance-preview':counted===''?'Sin arqueo':money(asMoney(Number(counted)-expected))})){const el=document.getElementById(id);if(el)el.textContent=v;}}
   }
   function refreshRoomSelect(formType){
-    const f=document.getElementById(formType==='ingreso'?'checkin-form':'reservation-form');if(!f)return;
-    const fd=Object.fromEntries(new FormData(f).entries());
-    const el=f.elements.namedItem('roomId');if(!el)return;
-    const options=formType==='ingreso'?checkinRoomOptions(fd):reservationRoomOptions(fd);
-    const current=fd.roomId;
+  const form=document.getElementById(formType==='ingreso'?'checkin-form':'reservation-form');
+  if(!form)return;
+  if(formType!=='ingreso'){
+    const fd=readForm('reservation-form'),el=form.elements.namedItem('roomId');
+    if(!el)return;
+    const options=reservationRoomOptions(fd),current=fd.roomId;
     el.innerHTML=selectOptions(options,options.some(x=>x[0]===current)?current:'');
+    return;
   }
+  const fd=readForm('checkin-form'),entries=checkinAssignments(fd),used=[];
+  for(const e of entries){
+    const name=e.primary?'roomId':e.key+'__roomId',el=form.elements.namedItem(name);
+    if(!el)continue;
+    const options=checkinRoomOptions({...fd,type:e.type,primary:e.primary},used);
+    const valid=options.some(x=>x[0]===e.roomId)?e.roomId:'';
+    el.innerHTML=selectOptions(options,valid);
+    if(valid)used.push(valid);
+  }
+  ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
+}
   function guestData(f){return {firstName:String(f.firstName||'').trim(),secondName:String(f.secondName||'').trim(),lastName:String(f.lastName||'').trim(),secondLastName:String(f.secondLastName||'').trim(),document:String(f.document||'').trim(),phone:String(f.phone||'').trim(),email:String(f.email||'').trim()};}
   function saveGuest(g){
     const found=getGuestByDocument(g.document);
