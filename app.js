@@ -640,8 +640,8 @@
         ${select('Desayuno',entry.key+'__breakfast',[['sin','Sin desayuno'],['con','Con desayuno']],entry.breakfast,'',entry.key+'-breakfast')}
         ${select('Asignar habitación',entry.key+'__roomId',checkinRoomOptions({...d,type:entry.type,primary:false},entries.slice(0,index+1).map(e=>e.roomId)),entry.roomId,'required',entry.key+'-room')}
       </div>
-      <div class="group-room-price"><span>Tarifa por noche</span><strong id="${esc(entry.key)}-rate">${rateLabel(entry.type,entry.breakfast)}</strong>
-        <span>Subtotal ${nights} noche(s)</span><strong id="${esc(entry.key)}-total">${rate(entry.type,entry.breakfast)===null?'Por definir':money(nights*rate(entry.type,entry.breakfast))}</strong></div>
+      <div class="group-room-price"><span>Tarifa por noche</span><strong id="${esc(entry.key)}-rate">${checkinRateLabel(entry.type,entry.breakfast,d.paymentMethod)}</strong>
+        <span>Subtotal ${nights} noche(s)</span><strong id="${esc(entry.key)}-total">${checkinNightRate(entry.type,entry.breakfast,d.paymentMethod)===null?'No aplica':money(nights*checkinNightRate(entry.type,entry.breakfast,d.paymentMethod))}</strong></div>
     </div>`).join('')}
     ${entries.length>1?`<p class="mini-caption section-gap">Las ${entries.length} habitaciones se registrarán a nombre del mismo cliente, con saldos individuales. El pago inicial se distribuye en el orden mostrado.</p>`:''}
   </section>`;
@@ -650,7 +650,7 @@
   const {items,nights,total}=checkinGroupEstimate(d);
   return `<div class="group-breakdown" id="checkin-room-breakdown">
     ${items.map((e,i)=>`<div class="group-breakdown-line"><div><strong>${e.roomId?`Hab. ${esc(roomOf(e.roomId)?.number||'—')}`:i===0?'Habitación principal':'Habitación adicional '+(i+1)}</strong>
-      <small>${esc(LABELS[e.type])} · ${e.breakfast==='con'?'Con desayuno':'Sin desayuno'} · ${nights} noche(s)</small></div>
+      <small>${esc(LABELS[e.type])} · ${e.breakfast==='con'?'Con desayuno':'Sin desayuno'} · ${nights} noche(s)${e.saved>0?' · Ahorra '+money(e.saved):''}</small></div>
       <strong>${e.total===null?'Por definir':money(e.total)}</strong></div>`).join('')}
     <div class="group-breakdown-line group-breakdown-total"><span>Total de ${items.length} habitación(es)</span><strong>${total===null?'Por definir':money(total)}</strong></div>
   </div>`;
@@ -663,8 +663,8 @@
   }
   function renderCheckin(){
     const d=ui.checkinDraft||(ui.checkinDraft=initialCheckinDraft());
-    const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=rate(d.type,d.breakfast),stayTotal=estimation.total,b=reservationOf(ui.prefillBookingId);
-    const bookedAdvance=b?.advance||0;
+    const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=checkinNightRate(d.type,d.breakfast,d.paymentMethod),stayTotal=estimation.total,b=reservationOf(ui.prefillBookingId);
+    const bookedAdvance=b?.advance||0,initialPayment=checkinPaymentAmount(d,stayTotal,bookedAdvance),choice=checkinPaymentChoice(d.paymentMethod);
     return head('Recepción / check-in','Registrar ingreso de huésped','Búsqueda por cédula y asignación de una o varias habitaciones al mismo titular.',btn('Ver habitaciones','go-habitaciones','btn-secondary'))+
     `<div class="two-col"><section class="panel"><div class="panel-head"><div><h2>Nuevo registro de hospedaje</h2><p>Complete los datos obligatorios marcados con *</p></div>${tag('Ingreso','success')}</div>
       <div class="panel-body">${b?`<div class="info-strip"><span>Reserva vinculada: <strong>${esc(b.name)}</strong> · ${datePretty(b.arrival)} · anticipo ${money(bookedAdvance)}</span><button class="btn btn-link" data-action="unlink-booking">Quitar</button></div>`:''}
@@ -676,14 +676,17 @@
           ${select('Tipo de habitación','type',TYPES.map(x=>[x,LABELS[x]]),d.type)}
           ${select('Desayuno','breakfast',[['sin','Sin desayuno'],['con','Con desayuno']],d.breakfast)}
           ${select('Asignar habitación','roomId',checkinRoomOptions({...d,primary:true}),d.roomId,'required')}
-          <div class="field"><label>Precio por noche</label><div class="readonly-info" id="checkin-night-rate">${rateLabel(d.type,d.breakfast)}</div></div>
+          <div class="field"><label>Precio por noche</label><div class="readonly-info" id="checkin-night-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</div></div>
         </div>
         ${renderCheckinExtraRooms(d)}
-        <div class="form-section-label">03 · Pago</div><div class="form-grid cols-3">
-          ${select('Forma de pago','paymentMethod',[['efectivo','Efectivo'],['transferencia','Transferencia']],d.paymentMethod)}${select('Turno de recepción','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
-          ${field('Importe a abonar al total de habitaciones (USD)','paymentAmount',d.paymentAmount,{type:'number',required:true,min:0,step:'0.01',placeholder:'0.00'})}
-          <div class="field ${d.paymentMethod==='transferencia'?'':'hidden'}" id="transfer-field"><label for="transferCode">Código de transferencia *</label><input name="transferCode" id="transferCode" placeholder="Referencia bancaria" value="${esc(d.transferCode||'')}"></div>
-        </div>${cashChangeFields('checkin')}<div class="mini-caption section-gap">Puede cobrar todo el grupo en un solo pago. El sistema distribuirá el abono entre las cuentas individuales por orden de habitación, y registrará el vuelto una sola vez.</div>
+        <div class="form-section-label">03 · Forma de pago y tarifa</div><div class="form-grid cols-3">
+          ${select('Forma de pago / precio','paymentMethod',CHECKIN_PAYMENT_OPTIONS,d.paymentMethod||'por_cobrar')}
+          ${select('Turno de recepción','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
+          <div class="field"><label>Valor a cobrar en el ingreso</label><div class="readonly-info checkin-auto-pay" id="checkin-auto-payment">${money(initialPayment)}</div><div class="field-hint">Se calcula automáticamente; no puede modificarse.</div></div>
+          <div class="field ${choice?.method==='transferencia'?'':'hidden'}" id="transfer-field"><label for="transferCode">Código de transferencia *</label><input name="transferCode" id="transferCode" placeholder="Referencia bancaria" value="${esc(d.transferCode||'')}"></div>
+        </div>${cashChangeFields('checkin')}
+        <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'Por cobrar: no se registra dinero recibido y el importe queda como saldo pendiente.':'Pago completo: se aplica automáticamente el saldo de todas las habitaciones, descontando cualquier anticipo registrado.'}</div>
+        <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">La tarifa con descuento solo aplica sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
         <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
           ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice)}
         </div><div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
@@ -693,8 +696,8 @@
         <div class="form-actions"><button class="btn btn-secondary" type="reset" id="clear-checkin">Limpiar formulario</button><button class="btn btn-primary" type="submit">Registrar ingreso</button></div>
       </form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Resumen de hospedaje</h2><p>Tarifa según configuración del hotel</p></div></div><div class="panel-body">
-        <div class="summary-card"><div class="mini-caption">TOTAL DE LAS HABITACIONES</div><div class="summary-price" id="checkin-total">${stayTotal===null?'Por definir':money(stayTotal)}</div>${renderCheckinBreakdown(d)}<div class="summary-pair"><span>Tarifa por noche principal</span><strong id="preview-rate">${rateLabel(d.type,d.breakfast)}</strong></div><div class="summary-pair"><span>Noches por habitación</span><strong id="preview-nights">${nights}</strong></div><div class="summary-pair"><span>Anticipo registrado</span><strong id="preview-advance">${money(bookedAdvance)}</strong></div><div class="summary-pair"><span>Pago en ingreso</span><strong id="preview-payment">${money(d.paymentAmount)}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong id="preview-due">${stayTotal===null?'Por definir':money(Math.max(0,stayTotal-bookedAdvance-asMoney(d.paymentAmount)))}</strong></div></div>
-        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa, no precio por persona. No se calculan impuestos adicionales automáticamente.</div>
+        <div class="summary-card"><div class="mini-caption">TOTAL DE LAS HABITACIONES</div><div class="summary-price" id="checkin-total">${stayTotal===null?'Por definir':money(stayTotal)}</div>${renderCheckinBreakdown(d)}<div class="summary-pair"><span>Tarifa por noche principal</span><strong id="preview-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</strong></div><div class="summary-pair"><span>Noches por habitación</span><strong id="preview-nights">${nights}</strong></div><div class="summary-pair"><span>Anticipo registrado</span><strong id="preview-advance">${money(bookedAdvance)}</strong></div><div class="summary-pair"><span>Pago automático al ingreso</span><strong id="preview-payment">${money(initialPayment)}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong id="preview-due">${stayTotal===null?'Por definir':money(Math.max(0,stayTotal-bookedAdvance-initialPayment))}</strong></div></div>
+        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa. Los descuentos corresponden exclusivamente a hospedaje sin desayuno y sin solicitud de factura; no incluyen personas adicionales, niños ni consumos. La facturación debe cumplir las obligaciones tributarias aplicables.</div>
         <div class="dashboard-notice"><strong>Facturación:</strong> esta versión registra la solicitud, pero no emite comprobantes electrónicos del SRI.</div>
       </div></aside></div>`;
   }
