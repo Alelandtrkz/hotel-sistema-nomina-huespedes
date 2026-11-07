@@ -1,3 +1,30 @@
+# Hotel Unicornio — Sistema de Recepción v0.5 (Fase 2)
+
+**Sitio de pruebas:** https://alelandtrkz.github.io/hotel-sistema-nomina-huespedes/
+
+La fase 2 amplía la cuenta viva de habitación en la misma aplicación autenticada con Supabase. No hace falta crear nuevas tablas: los cambios se guardan dentro del estado compartido en `hotel_cloud_state`, conservando las estadías anteriores y la importación de 1.448 huéspedes. La operación sigue siendo **BETA** y no sustituye un sistema contable con transacciones atómicas.
+
+## Novedades de la fase 2
+
+1. **Varios desde habitación:** abra una habitación ocupada → "Agregar varios a la habitación". Seleccione producto, cantidad y turno. El cargo incrementa el saldo y descuenta inventario si se registró conteo. No entra en caja hasta recibir el pago. El enlace al catálogo completo mantiene la opción de cargos manuales.
+2. **Persona adicional:** en la misma cuenta se registra un acompañante identificado por nombre, categoría (adulto mayor de 12 años o niño de 6 a 12 años), **número explícito de noches a cobrar** y turno. Tarifa tomada de Ajustes: adulto **$10** y niño **$5** por persona y noche seleccionada. El usuario debe confirmar el cargo. No se inventa una regla para menores de 6 años.
+3. **Extender un día:** agrega exactamente una noche desde la fecha de salida prevista, con la **tarifa de la estadía**, sin aplicar un precio nuevo. Antes de hacerlo comprueba conflictos con reservas/estadías asignadas para esa habitación.
+4. **Cerrar cuenta final:** incluye hospedaje, personas adicionales, varios, anticipos y pagos. Puede cobrar **todo el saldo pendiente en una sola operación** por efectivo o transferencia, calculando el vuelto entregado o pendiente, y registrar la salida al mismo tiempo. La habitación pasa a pendiente de limpieza. Si el saldo está pagado, permite cerrar sin un nuevo cargo. Un vuelto no entregado queda como obligación del hotel y requiere confirmación especial.
+5. **Historial:** muestra cronológicamente ingreso, hospedaje, ampliaciones, acompañantes, consumos, anticipos, abonos, vueltos y salida. Está disponible en la cuenta activa y en el apartado Salidas para estadías cerradas. Permite exportar CSV.
+
+El cierre de caja incluye cargos de acompañantes en el total informativo de "Cargos a habitaciones" y contabiliza el efectivo únicamente cuando se registra el pago. **No duplica ingresos**.
+
+## Pruebas y limitaciones
+
+- Pruebas sin datos reales: `node tests/fase1.test.cjs` y `node tests/fase2.test.cjs`.
+- Los flujos anteriores siguen vigentes; `additionalPeople` y `extensions` son arreglos opcionales retrocompatibles.
+- Las operaciones continúan guardándose como un documento JSONB con versión en Supabase. Se detecta un conflicto entre equipos y se obliga a recargar en lugar de sobrescribir, pero **no se garantiza atomicidad de pagos, stock y ocupación** para una recepción en producción.
+- No hay anulación ni devolución de operaciones erróneas en esta fase; revisar importes y confirmar antes de cada registro.
+- El cierre no genera comprobantes SRI ni elimina de caja los vueltos pendientes; los mantiene localizables.
+- No introduzca operaciones reales hasta completar pruebas integrales, auditoría, transacciones de caja e inventario y respaldo de base de datos.
+
+---
+
 # Hotel Unicornio — Beta conectada a Supabase
 
 **Estado actual:** la aplicación en GitHub Pages exige acceso del administrador con correo verificado. Los 1.448 registros de clientes reales están en Supabase bajo políticas RLS. Habitaciones, reservas, estadías, pagos, consumos, inventario y cierres de caja comparten un estado con control optimista de versión. **No usar para contabilidad real ni operaciones simultáneas críticas**: es un entorno de pruebas; las transacciones de módulos aún deben normalizarse.

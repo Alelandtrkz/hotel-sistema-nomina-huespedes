@@ -188,7 +188,7 @@
       }
       if(!uiLoaded) {
         uiLoaded=true;
-        var script=document.createElement("script");script.src="./app.js?v=0.4-fase1";
+        var script=document.createElement("script");script.src="./app.js?v=0.5-fase2";
         script.onerror=function(){status("No se pudo cargar la aplicación",true);};
         document.body.appendChild(script);
       }
