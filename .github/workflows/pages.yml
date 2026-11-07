@@ -32,6 +32,7 @@ jobs:
           node tests/fase1.test.cjs
           node tests/fase2.test.cjs
           node tests/auth-recovery.test.cjs
+          node tests/multihabitacion.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos
