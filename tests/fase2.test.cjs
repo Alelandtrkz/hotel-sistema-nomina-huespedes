@@ -140,4 +140,14 @@ success('Cierre de cuenta saldada no genera otro pago',()=>{
  t.processFinalSettlement();
  assert.equal(s.status,'finalizada');assert.equal(s.payments.length,1);assert.equal(t.dueOf(s),0);
 });
+success('El historial conserva navegación de más de 30 salidas',()=>{
+ d=base();d.stays=Array.from({length:31},(_,i)=>({...d.stays[0],
+  id:'fake-closed-'+i,status:'finalizada',actualCheckout:'2026-11-'+String(30-i%20).padStart(2,'0')+'T12:00:00Z'
+ }));
+ t.setDB(d);
+ const html=t.renderCheckout();
+ assert(html.includes('Página 1 de 2'),'Debe indicar dos páginas');
+ assert.equal(html.split('data-action="show-stay-history"').length-1,30,'Debe mostrar 30 acciones de historial por página');
+ assert(html.includes('Más antiguas'),'Debe permitir consultar salidas anteriores');
+});
 console.log('Todos los datos utilizados son ficticios; Supabase no fue modificado en estas pruebas.');
