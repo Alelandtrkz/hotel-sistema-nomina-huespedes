@@ -494,6 +494,99 @@
     if(arrival<=today()&&r.status!=='disponible')return false;
     return true;
   }
+  function checkinAssignments(d){
+  const main={key:'principal',type:String(d.type||'individual'),breakfast:String(d.breakfast||'sin'),roomId:String(d.roomId||''),primary:true};
+  const extras=(ui.checkinExtraRooms||[]).map(row=>{
+    const key=row.key;
+    return {key,type:String(d[key+'__type']||'individual'),breakfast:String(d[key+'__breakfast']||'sin'),roomId:String(d[key+'__roomId']||''),primary:false};
+  });
+  return [main,...extras];
+}
+  function checkinGroupEstimate(d){
+  const nights=getNightCount(d.arrival,d.departure),entries=checkinAssignments(d);
+  const items=entries.map(e=>{
+    const nightly=rate(e.type,e.breakfast),total=nightly===null||!Number.isFinite(nightly)||nightly<0?null:asMoney(nights*nightly);
+    return {...e,nightly,total};
+  });
+  const total=items.some(e=>e.total===null)?null:asMoney(items.reduce((sum,e)=>sum+e.total,0));
+  return {nights,items,total};
+}
+  function prepareCheckinGroup(d,booking=null){
+  const estimate=checkinGroupEstimate(d);
+  if(!Number.isSafeInteger(estimate.nights)||estimate.nights<1)return {error:'La fecha de salida debe ser posterior a la de entrada.'};
+  if(estimate.items.length<1||estimate.items.length>db.rooms.filter(r=>r.type!=='arrendada').length)
+    return {error:'Número de habitaciones inválido para este ingreso.'};
+  if(booking&&(!['pendiente','confirmada'].includes(booking.status)||booking.type!==estimate.items[0].type||
+       booking.breakfast!==estimate.items[0].breakfast||
+       (booking.roomId&&booking.roomId!==estimate.items[0].roomId)))
+    return {error:'La habitación principal debe coincidir con la reserva vinculada, su tarifa y sus fechas.'};
+  if(booking&&(booking.arrival!==d.arrival||booking.departure!==d.departure))
+    return {error:'Las fechas de la reserva vinculada deben coincidir con el ingreso.'};
+  const ids=new Set();
+  for(const item of estimate.items){
+    if(!TYPES.includes(item.type)||!['con','sin'].includes(item.breakfast))
+      return {error:'Hay un tipo de habitación o desayuno no válido.'};
+    if(item.total===null)return {error:'La tarifa de una habitación está sin configurar. Revise el tipo de habitación y desayuno.'};
+    const room=roomOf(item.roomId);
+    if(!room||!roomCompatible(room,item.type)||!availableForCheckin(room,d.arrival,d.departure,item.primary?booking?.id:null))
+      return {error:'La habitación '+(room?.number||'seleccionada')+' no está disponible o no corresponde al tipo solicitado.'};
+    if(ids.has(room.id))return {error:'Una habitación no puede asignarse dos veces al mismo ingreso. Revise las seleccionadas.'};
+    ids.add(room.id);
+  }
+  const depositCents=moneyCents(booking?.advance||0),firstTotalCents=moneyCents(estimate.items[0].total),totalCents=moneyCents(estimate.total);
+  const payment=String(d.paymentAmount??'').trim()===''?0:Number(d.paymentAmount),amountCents=moneyCents(payment);
+  if(!Number.isSafeInteger(depositCents)||depositCents<0||depositCents>firstTotalCents ||
+     !Number.isFinite(payment)||!Number.isSafeInteger(amountCents)||amountCents<0||amountCents>totalCents-depositCents)
+    return {error:'El pago del grupo debe estar entre $0 y el total de las habitaciones menos el anticipo.'};
+  if(!['efectivo','transferencia'].includes(d.paymentMethod))return {error:'Elija efectivo o transferencia.'};
+  if(d.paymentMethod==='transferencia'&&amountCents>0&&!String(d.transferCode||'').trim())
+    return {error:'Ingrese el número de referencia de la transferencia.'};
+  const tender=resolveTendered(d.cashTendered,d.paymentMethod,asMoney(amountCents/100),d.changeStatus);
+  if(tender.error)return {error:tender.error};
+  let remaining=amountCents,changeAllocated=false;
+  const items=estimate.items.map((e,i)=>{
+    const advanceCents=i===0?depositCents:0,chargeCents=moneyCents(e.total)-advanceCents;
+    const appliedCents=Math.min(remaining,chargeCents);remaining-=appliedCents;
+    const assignedChangeCents=!changeAllocated&&appliedCents>0?moneyCents(tender.change):0;
+    if(appliedCents>0)changeAllocated=true;
+    const allocatedTender={received:asMoney((appliedCents+assignedChangeCents)/100),
+      change:asMoney(assignedChangeCents/100),
+      status:assignedChangeCents>0?tender.status:'no_aplica'};
+    return {...e,advance:asMoney(advanceCents/100),payment:asMoney(appliedCents/100),tender:allocatedTender,
+      room:roomOf(e.roomId)};
+  });
+  if(remaining!==0)return {error:'No se pudo distribuir el pago. Revise los importes.'};
+  return {...estimate,items,deposit:asMoney(depositCents/100),payment:asMoney(amountCents/100),
+    tender,error:null};
+}
+  function renderCheckinExtraRooms(d){
+  const entries=checkinAssignments(d),nights=getNightCount(d.arrival,d.departure);
+  return `<section class="group-rooms" aria-label="Habitaciones adicionales del cliente">
+    <div class="group-rooms-heading"><div><strong>Más habitaciones para este mismo cliente</strong><p>Un cliente puede tener varias habitaciones. Cada habitación mantiene su propia cuenta y solo un titular.</p></div>
+      ${btn('＋ Agregar otra habitación','add-checkin-room','btn-secondary',`type="button" ${entries.length>=25?'disabled':''}`)}</div>
+    ${entries.slice(1).map((entry,index)=>`<div class="group-room-item">
+      <div class="group-room-top"><strong>Habitación adicional ${index+2}</strong>
+      ${btn('Quitar','remove-checkin-room','btn-secondary btn-sm',`type="button" data-id="${esc(entry.key)}"`)}</div>
+      <div class="form-grid cols-3">
+        ${select('Tipo de habitación',entry.key+'__type',TYPES.map(x=>[x,LABELS[x]]),entry.type,'',entry.key+'-type')}
+        ${select('Desayuno',entry.key+'__breakfast',[['sin','Sin desayuno'],['con','Con desayuno']],entry.breakfast,'',entry.key+'-breakfast')}
+        ${select('Asignar habitación',entry.key+'__roomId',checkinRoomOptions({...d,type:entry.type},entries.slice(0,index+1).map(e=>e.roomId)),entry.roomId,'required',entry.key+'-room')}
+      </div>
+      <div class="group-room-price"><span>Tarifa por noche</span><strong id="${esc(entry.key)}-rate">${rateLabel(entry.type,entry.breakfast)}</strong>
+        <span>Subtotal ${nights} noche(s)</span><strong id="${esc(entry.key)}-total">${rate(entry.type,entry.breakfast)===null?'Por definir':money(nights*rate(entry.type,entry.breakfast))}</strong></div>
+    </div>`).join('')}
+    ${entries.length>1?`<p class="mini-caption section-gap">Las ${entries.length} habitaciones se registrarán a nombre del mismo cliente, con saldos individuales. El pago inicial se distribuye en el orden mostrado.</p>`:''}
+  </section>`;
+}
+  function renderCheckinBreakdown(d){
+  const {items,nights,total}=checkinGroupEstimate(d);
+  return `<div class="group-breakdown" id="checkin-room-breakdown">
+    ${items.map((e,i)=>`<div class="group-breakdown-line"><div><strong>${e.roomId?`Hab. ${esc(roomOf(e.roomId)?.number||'—')}`:i===0?'Habitación principal':'Habitación adicional '+(i+1)}</strong>
+      <small>${esc(LABELS[e.type])} · ${e.breakfast==='con'?'Con desayuno':'Sin desayuno'} · ${nights} noche(s)</small></div>
+      <strong>${e.total===null?'Por definir':money(e.total)}</strong></div>`).join('')}
+    <div class="group-breakdown-line group-breakdown-total"><span>Total de ${items.length} habitación(es)</span><strong>${total===null?'Por definir':money(total)}</strong></div>
+  </div>`;
+}
   function checkinRoomOptions(d){
     const rooms=db.rooms.filter(r=>roomCompatible(r,d.type)&&availableForCheckin(r,d.arrival,d.departure,ui.prefillBookingId));
     return [['','Seleccionar habitación disponible'],...rooms.map(r=>[r.id,'Habitación '+r.number])];
