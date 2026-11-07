@@ -246,7 +246,7 @@
   const roomsLegend=()=>`<div class="room-summary"><span><i class="legend-dot green"></i>Disponible</span><span><i class="legend-dot red"></i>Ocupada pagada</span><span><i class="legend-dot blue"></i>Ocupada por cobrar</span><span><i class="legend-dot yellow"></i>Pendiente de limpieza</span><span><i class="legend-dot gray"></i>Arrendada</span></div>`;
   const noRows=(message='Todavía no hay registros.')=>`<div class="empty"><div class="empty-icon">▧</div>${esc(message)}</div>`;
   const field=(title,name,value='',opts={})=>`<div class="field ${opts.full?'full':''}"><label for="${esc(opts.id||name)}">${esc(title)}${opts.required?' *':''}</label>${opts.textarea?`<textarea id="${esc(opts.id||name)}" name="${esc(name)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''}>${esc(value)}</textarea>`:`<input id="${esc(opts.id||name)}" name="${esc(name)}" type="${esc(opts.type||'text')}" value="${esc(value)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''} ${opts.min!==undefined?`min="${opts.min}"`:''} ${opts.max!==undefined?`max="${opts.max}"`:''} ${opts.step!==undefined?`step="${opts.step}"`:''} ${opts.maxlength?`maxlength="${opts.maxlength}"`:''} ${opts.readonly?'readonly':''} autocomplete="off">`}${opts.hint?`<div class="field-hint">${esc(opts.hint)}</div>`:''}</div>`;
-  const select=(title,name,opts,value,extra='')=>`<div class="field"><label for="${esc(name)}">${esc(title)}</label><select id="${esc(name)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
+  const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula ecuatoriana','document',g.document,{required:true,placeholder:'10 dígitos',maxlength:10})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por número de cédula</label><input id="lookup-${scope}" inputmode="numeric" maxlength="10" placeholder="Ingrese 10 dígitos" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
   let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
@@ -299,10 +299,10 @@
     <div class="phase2-operation-body"><form id="room-extra-form">
       <input type="hidden" name="stayId" value="${esc(stay.id)}">
       <div class="form-grid cols-2">
-        ${select('Producto','productId',[['','Seleccione un producto'],...available.map(p=>[p.id,`${p.name} · ${money(p.price)}${p.stock!==null?' · stock '+p.stock:''}`])],'','required')}
-        ${field('Cantidad','quantity','1',{type:'number',min:1,max:1000,step:1,required:true})}
-        ${select('Turno','shift',shiftOptions,'dia')}
-        ${field('Encargado','operator','',{placeholder:'Recepción'})}
+        ${select('Producto','productId',[['','Seleccione un producto'],...available.map(p=>[p.id,`${p.name} · ${money(p.price)}${p.stock!==null?' · stock '+p.stock:''}`])],'','required','room-extra-product')}
+        ${field('Cantidad','quantity','1',{id:'room-extra-quantity',type:'number',min:1,max:1000,step:1,required:true})}
+        ${select('Turno','shift',shiftOptions,'dia','','room-extra-shift')}
+        ${field('Encargado','operator','',{id:'room-extra-operator',placeholder:'Recepción'})}
       </div>
       <div id="room-extra-preview" class="phase2-preview">Seleccione un producto.</div>
       <button class="btn btn-primary section-gap" type="submit" ${available.length?'':'disabled'}>Agregar consumo a la cuenta</button>
@@ -315,11 +315,11 @@
     <div class="phase2-operation-body"><form id="room-person-form">
       <input type="hidden" name="stayId" value="${esc(stay.id)}">
       <div class="form-grid cols-2">
-        ${field('Nombre de la persona adicional','name','',{required:true,placeholder:'Nombre y apellido',maxlength:100})}
-        ${select('Categoría','category',[['adulto','Adulto mayor de 12 años'],['nino','Niño de 6 a 12 años']],'adulto')}
-        ${field('Noches a cobrar','nights','1',{type:'number',min:1,max:maxNights,step:1,required:true,hint:'Debe indicar expresamente por cuántas noches se cobra.'})}
-        ${select('Turno','shift',shiftOptions,'dia')}
-        ${field('Encargado','operator','',{placeholder:'Recepción'})}
+        ${field('Nombre de la persona adicional','name','',{id:'room-person-name',required:true,placeholder:'Nombre y apellido',maxlength:100})}
+        ${select('Categoría','category',[['adulto','Adulto mayor de 12 años'],['nino','Niño de 6 a 12 años']],'adulto','','room-person-category')}
+        ${field('Noches a cobrar','nights','1',{id:'room-person-nights',type:'number',min:1,max:maxNights,step:1,required:true,hint:'Debe indicar expresamente por cuántas noches se cobra.'})}
+        ${select('Turno','shift',shiftOptions,'dia','','room-person-shift')}
+        ${field('Encargado','operator','',{id:'room-person-operator',placeholder:'Recepción'})}
       </div>
       <div id="room-person-preview" class="phase2-preview">Cargo estimado: ${money(adult)} por 1 noche.</div>
       <button type="submit" class="btn btn-primary section-gap">Agregar persona y registrar cargo</button>
@@ -335,8 +335,8 @@
       <form id="room-extension-form">
         <input type="hidden" name="stayId" value="${esc(stay.id)}">
         <div class="form-grid cols-2">
-          ${select('Turno','shift',shiftOptions,'dia')}
-          ${field('Encargado','operator','',{placeholder:'Recepción'})}
+          ${select('Turno','shift',shiftOptions,'dia','','room-extension-shift')}
+          ${field('Encargado','operator','',{id:'room-extension-operator',placeholder:'Recepción'})}
         </div>
         <button class="btn btn-primary section-gap" type="submit" ${blocker?'disabled':''}>Confirmar una noche adicional</button>
       </form>
@@ -358,13 +358,13 @@
       <form id="finalize-form">
         <input type="hidden" name="stayId" value="${esc(stay.id)}">
         ${due>0?`<div class="form-grid cols-2 section-gap">
-          ${select('Cobrar saldo mediante','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
-          ${select('Turno','shift',shiftOptions,'dia')}
+          ${select('Cobrar saldo mediante','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo','','final-method')}
+          ${select('Turno','shift',shiftOptions,'dia','','final-shift')}
         </div>
         ${cashChangeFields('final')}
         <div class="field hidden section-gap" id="final-reference-field"><label for="final-reference">Referencia bancaria *</label><input id="final-reference" name="reference" placeholder="Número de transferencia"></div>`:
         '<p class="mini-caption section-gap">La cuenta está pagada. No se registrará ningún cobro adicional.</p><input type="hidden" name="shift" value="dia">'}
-        ${field('Encargado del cierre','operator','',{placeholder:'Recepción',required:true})}
+        ${field('Encargado del cierre','operator','',{id:'final-operator',placeholder:'Recepción',required:true})}
         <button class="btn btn-primary section-gap" type="submit">${due>0?'Cobrar '+money(due)+' y cerrar cuenta':'Cerrar cuenta y registrar salida'}</button>
         <p class="mini-caption section-gap">El cierre debe quedar pagado. Si hay vuelto no entregado, se solicitará una confirmación y seguirá registrado como deuda del hotel.</p>
       </form>
