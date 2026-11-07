@@ -11,6 +11,9 @@
   var revision = 0, baseGuests=new Map(), pending=null, writing=false, stale=false;
   var uiCallbacks = null, refreshTimer=null, uiLoaded=false, lastSavedAt=null;
   var ROOT = window.location.origin + window.location.pathname;
+  // Capture the recovery token marker before Supabase processes the URL fragment.
+  var recoveryMode=/(?:^|[&#])type=recovery(?:&|$)/.test(window.location.hash || "");
+  var recoveryValidated=false;
   var cloudApp = {ready:false,data:null,save:scheduleSave,bindUI:bindUI,refresh:refresh};
   window.hotelCloud = cloudApp;
   var style = document.createElement("style");
@@ -30,7 +33,11 @@
     ".cloud-auth-foot{font-size:12px!important;margin-top:21px;padding-top:15px;border-top:1px solid #edf1ed}" +
     ".cloud-sync-indicator{font-size:12px;color:#315447;white-space:nowrap;margin-right:12px}" +
     ".cloud-sync-indicator.error{color:#a7352d;font-weight:600}" +
-    ".cloud-auth-card .protected{background:#f2f5f1;padding:12px;border-radius:10px;color:#475d4d;font-size:13px}";
+    ".cloud-auth-card .protected{background:#f2f5f1;padding:12px;border-radius:10px;color:#475d4d;font-size:13px}" +
+    "#cloud-auth-gate [hidden]{display:none!important}" +
+    ".cloud-auth-card button.recovery-link{background:transparent;color:#265942;border:0;text-decoration:underline;margin-top:7px;padding:11px 8px;font-weight:650}" +
+    ".cloud-auth-card button.recovery-link:hover{color:#173d2e}" +
+    ".cloud-auth-card .recovery-hint{font-size:12px;margin:8px 0 16px;line-height:1.6;color:#5e7467}";
   document.head.appendChild(style);
   function $id(id){return document.getElementById(id);}
   function message(s, isOk) {
@@ -45,28 +52,53 @@
     g.innerHTML='<section class="cloud-auth-card">' +
       '<div class="cloud-symbol">U.</div><h1>Hotel Unicornio</h1>' +
       '<p>Sistema de recepción conectado a Supabase. Acceso únicamente autorizado.</p>' +
-      '<div class="protected">Cuenta administradora: <strong>hotelunicornio@hotmail.com</strong>. La clave se establece de forma privada; nunca se publica en GitHub.</div>' +
+      '<div class="protected">Administrador: <strong>hotelunicornio@hotmail.com</strong>. Utilice la contraseña actual de la cuenta, no la clave provisional del proyecto.</div>' +
       '<form id="cloud-auth-form">' +
       '<label for="cloud-email">Correo de acceso</label>' +
       '<input id="cloud-email" type="email" autocomplete="username" readonly value="hotelunicornio@hotmail.com">' +
       '<label for="cloud-password">Contraseña</label>' +
-      '<input id="cloud-password" type="password" autocomplete="current-password" required placeholder="Escriba su contraseña">' +
+      '<input id="cloud-password" type="password" autocomplete="current-password" required placeholder="Contraseña actual">' +
       '<button id="cloud-login" type="submit">Iniciar sesión</button>' +
       '</form>' +
-      '<button class="secondary" id="cloud-register" type="button">Crear acceso de administrador</button>' +
-      '<div class="cloud-auth-msg" id="cloud-message" role="status"></div>' +
-      '<p class="cloud-auth-foot">Por seguridad, no se admite la contraseña provisional compartida en el chat. Para crear el acceso elija una contraseña diferente de 12 caracteres o más y confirme su correo electrónico. Los datos de clientes están protegidos.</p>' +
+      '<button class="recovery-link" id="cloud-forgot" type="button">¿Olvidaste tu contraseña? Recuperar acceso</button>' +
+      '<form id="cloud-recovery-form" hidden>' +
+      '<p class="recovery-hint">Enlace de recuperación verificado. Establezca una contraseña NUEVA y única, con un mínimo de 12 caracteres. No comparta su contraseña por chat.</p>' +
+      '<label for="cloud-new-password">Nueva contraseña</label>' +
+      '<input id="cloud-new-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Mínimo 12 caracteres">' +
+      '<label for="cloud-confirm-password">Confirmar nueva contraseña</label>' +
+      '<input id="cloud-confirm-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Repita la nueva contraseña">' +
+      '<button id="cloud-recovery-submit" type="submit">Guardar nueva contraseña</button>' +
+      '<button id="cloud-recovery-cancel" type="button" class="secondary">Volver a iniciar sesión</button>' +
+      '</form>' +
+      '<div class="cloud-auth-msg" id="cloud-message" role="status" aria-live="polite"></div>' +
+      '<p class="cloud-auth-foot" id="cloud-auth-foot">¿Cambiaste de dispositivo? La cuenta es la misma en ambos. Si la contraseña guardada por el navegador no funciona, solicite un enlace nuevo al correo del hotel. Los datos de huéspedes no se borrarán.</p>' +
       '</section>';
     document.body.prepend(g);
-    $id("cloud-auth-form").addEventListener("submit", login);
-    $id("cloud-register").addEventListener("click", register);
+    $id("cloud-auth-form").addEventListener("submit",login);
+    $id("cloud-forgot").addEventListener("click",requestRecovery);
+    $id("cloud-recovery-form").addEventListener("submit",finishRecovery);
+    $id("cloud-recovery-cancel").addEventListener("click",function(){window.location.assign(ROOT);});
+    if(recoveryMode){
+      showRecoveryForm();
+      message("Comprobando el enlace de recuperación...",true);
+    }
+  }
+  function showRecoveryForm() {
+    var a=$id("cloud-auth-form"),b=$id("cloud-forgot"),c=$id("cloud-recovery-form");
+    if(a)a.hidden=true;if(b)b.hidden=true;if(c)c.hidden=false;
+  }
+  function showLoginForm() {
+    var a=$id("cloud-auth-form"),b=$id("cloud-forgot"),c=$id("cloud-recovery-form");
+    if(a)a.hidden=false;if(b)b.hidden=false;if(c)c.hidden=true;
   }
   function setBusy(b) {
-    ["cloud-login","cloud-register"].forEach(function(id){var el=$id(id);if(el)el.disabled=!!b;});
+    ["cloud-login","cloud-forgot","cloud-recovery-submit","cloud-recovery-cancel"].forEach(function(id){
+      var el=$id(id);if(el)el.disabled=!!b;
+    });
   }
   function strongPassword(password) {
-    return password.length>=12 && password.length<=128 &&
-       !["admin","123456789012","password1234","administrador","hotelunicornio"].some(function(v){return password.toLowerCase()===v;});
+    return typeof password==="string" && password.length>=12 && password.length<=128 &&
+      !["admin","123456789012","password1234","administrador","hotelunicornio"].some(function(v){return password.toLowerCase()===v;});
   }
   async function login(e) {
     e.preventDefault();message("");setBusy(true);
@@ -76,24 +108,50 @@
       if(result.error)throw result.error;
       $id("cloud-password").value="";
       await boot();
-    }catch(err){message("No se pudo iniciar sesión: "+(err.message||String(err)));}
-    finally{setBusy(false);}
+    }catch(err){
+      var code=String(err.code||"").toLowerCase(),txt=String(err.message||"");
+      if(code==="invalid_credentials"||/invalid login credentials/i.test(txt)) {
+        message("Correo o contraseña incorrectos. La cuenta de administrador está registrada. Escriba la clave actual manualmente o pulse «Recuperar acceso» para establecer una nueva.");
+      } else message("No se pudo iniciar sesión: "+txt);
+    }finally{setBusy(false);}
   }
-  async function register() {
-    message("");
-    var password=$id("cloud-password").value;
-    if(!strongPassword(password)) {message("Para crear la cuenta establezca una contraseña NUEVA de al menos 12 caracteres. No use la contraseña 'admin'.");return;}
-    setBusy(true);
+  async function requestRecovery() {
+    message("");setBusy(true);
     try {
-      var result=await CLIENT.auth.signUp({
-        email:ADMIN_EMAIL,password:password,
-        options:{emailRedirectTo:ROOT}
-      });
+      var result=await CLIENT.auth.resetPasswordForEmail(ADMIN_EMAIL,{redirectTo:ROOT});
       if(result.error)throw result.error;
       $id("cloud-password").value="";
-      message("Solicitud de acceso enviada. Revise el correo del hotel y confirme el enlace de Supabase. Luego vuelva a esta página e inicie sesión con su nueva contraseña. Si la confirmación lo lleva a otra dirección, abra nuevamente esta página.",true);
-    }catch(err){message("No fue posible crear el acceso: "+(err.message||String(err)));}
-    finally{setBusy(false);}
+      message("Solicitud enviada al correo del Hotel Unicornio. Revise la bandeja de entrada y correo no deseado; abra el enlace MÁS RECIENTE en el dispositivo donde quiera acceder. El enlace puede caducar y el servicio gratuito limita los envíos. No cree otra cuenta.",true);
+    }catch(err){
+      message("No se pudo solicitar la recuperación: "+(err.message||String(err))+". Si hay un límite de correos, espere antes de solicitar otro.");
+    }finally{setBusy(false);}
+  }
+  async function finishRecovery(e) {
+    e.preventDefault();message("");
+    if(!recoveryValidated){
+      message("El enlace no se ha validado. Ábralo directamente desde el correo del hotel. Si caducó, solicite uno nuevo.");return;
+    }
+    var password=$id("cloud-new-password").value,confirm=$id("cloud-confirm-password").value;
+    if(!strongPassword(password)){
+      message("Establezca una contraseña NUEVA de 12 a 128 caracteres. No utilice «admin» ni claves predecibles.");return;
+    }
+    if(password!==confirm){message("Las contraseñas no coinciden.");return;}
+    setBusy(true);
+    try {
+      var session=await CLIENT.auth.getSession();
+      if(session.error||!session.data?.session)throw new Error("El enlace de recuperación caducó. Solicite uno nuevo.");
+      var result=await CLIENT.auth.updateUser({password:password});
+      if(result.error)throw result.error;
+      $id("cloud-new-password").value="";
+      $id("cloud-confirm-password").value="";
+      recoveryMode=false;recoveryValidated=false;
+      if(window.history&&window.history.replaceState)window.history.replaceState(null,"",ROOT);
+      showLoginForm();
+      message("Contraseña actualizada. Validando el acceso de administrador...",true);
+      await boot();
+    }catch(err){
+      message("No se pudo guardar la nueva contraseña: "+(err.message||String(err)));
+    }finally{setBusy(false);}
   }
   function toLocalGuest(r) {
     return {
@@ -313,19 +371,35 @@
   function init() {
     gate();
     if(!window.supabase || !window.supabase.createClient) {
-      message("No fue posible cargar el componente seguro de Supabase. Compruebe su conexión y actualice esta página.");
+      message("No fue posible cargar Supabase. Compruebe su conexión y actualice esta página.");
       return;
     }
     CLIENT=window.supabase.createClient(URL,KEY,{
       auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
     });
     CLIENT.auth.onAuthStateChange(function(event) {
-      if(event==="SIGNED_OUT"){ready=false;window.location.reload();}
-      if(event==="SIGNED_IN" && !ready && !booting) setTimeout(boot,0);
+      if(event==="PASSWORD_RECOVERY"){
+        recoveryMode=true;recoveryValidated=true;
+        showRecoveryForm();
+        message("El enlace se verificó correctamente. Escriba y confirme la contraseña nueva.",true);
+        return;
+      }
+      if(event==="SIGNED_OUT" && !recoveryMode){ready=false;window.location.reload();return;}
+      if(event==="SIGNED_IN" && !recoveryMode && !ready && !booting)setTimeout(boot,0);
     });
     CLIENT.auth.getSession().then(function(res){
+      if(recoveryMode){
+        if(!res.data?.session){
+          recoveryMode=false;recoveryValidated=false;
+          showLoginForm();
+          message("El enlace de recuperación no es válido o ha caducado. Solicite uno nuevo desde «Recuperar acceso».");
+        } else if(!recoveryValidated){
+          message("Validando enlace de recuperación. Si no se activa el formulario, abra nuevamente el último correo.",true);
+        }
+        return;
+      }
       if(res.data&&res.data.session)boot();
-      else message("Inicie sesión. Si es la primera vez, cree el acceso con una contraseña nueva y confirme el correo.",true);
+      else message("Inicie sesión con su contraseña actual. Si no la recuerda, use «Recuperar acceso».",true);
     }).catch(function(err){message(err.message||String(err));});
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);
