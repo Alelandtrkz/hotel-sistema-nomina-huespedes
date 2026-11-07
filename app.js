@@ -293,6 +293,111 @@
       <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago</button>
     </form>`;
   }
+  function renderRoomExtraSection(stay){
+  const available=db.products.filter(p=>p.price!==null&&Number(p.price)>0).slice().sort(sortProduct);
+  return `<details class="phase2-operation" id="phase2-extras"><summary><span>Agregar varios a la habitación</span><small>Se cargarán a la cuenta, sin recibir dinero todavía</small></summary>
+    <div class="phase2-operation-body"><form id="room-extra-form">
+      <input type="hidden" name="stayId" value="${esc(stay.id)}">
+      <div class="form-grid cols-2">
+        ${select('Producto','productId',[['','Seleccione un producto'],...available.map(p=>[p.id,`${p.name} · ${money(p.price)}${p.stock!==null?' · stock '+p.stock:''}`])],'','required')}
+        ${field('Cantidad','quantity','1',{type:'number',min:1,max:1000,step:1,required:true})}
+        ${select('Turno','shift',shiftOptions,'dia')}
+        ${field('Encargado','operator','',{placeholder:'Recepción'})}
+      </div>
+      <div id="room-extra-preview" class="phase2-preview">Seleccione un producto.</div>
+      <button class="btn btn-primary section-gap" type="submit" ${available.length?'':'disabled'}>Agregar consumo a la cuenta</button>
+      <div class="mini-caption">Los productos sin precio definido se registran desde el catálogo completo de Varios.</div>
+    </form></div></details>`;
+}
+  function renderAdditionalPersonSection(stay){
+  const adult=Number(db.config.extraPersonRate??10),child=Number(db.config.childRate??5),maxNights=Math.max(1,getNightCount(stay.arrival,stay.departure));
+  return `<details class="phase2-operation" id="phase2-people"><summary><span>Agregar persona adicional</span><small>Adultos ${money(adult)} · niños ${money(child)} por persona y noche aplicada</small></summary>
+    <div class="phase2-operation-body"><form id="room-person-form">
+      <input type="hidden" name="stayId" value="${esc(stay.id)}">
+      <div class="form-grid cols-2">
+        ${field('Nombre de la persona adicional','name','',{required:true,placeholder:'Nombre y apellido',maxlength:100})}
+        ${select('Categoría','category',[['adulto','Adulto mayor de 12 años'],['nino','Niño de 6 a 12 años']],'adulto')}
+        ${field('Noches a cobrar','nights','1',{type:'number',min:1,max:maxNights,step:1,required:true,hint:'Debe indicar expresamente por cuántas noches se cobra.'})}
+        ${select('Turno','shift',shiftOptions,'dia')}
+        ${field('Encargado','operator','',{placeholder:'Recepción'})}
+      </div>
+      <div id="room-person-preview" class="phase2-preview">Cargo estimado: ${money(adult)} por 1 noche.</div>
+      <button type="submit" class="btn btn-primary section-gap">Agregar persona y registrar cargo</button>
+      <p class="mini-caption section-gap">Se registra una persona por operación. Este cargo no constituye un registro oficial de identidad; confirme la tarifa antes de guardar.</p>
+    </form></div></details>`;
+}
+  function renderExtendStaySection(stay){
+  const next=addIsoDays(stay.departure,1),blocker=extensionBlocker(stay,next);
+  return `<details class="phase2-operation" id="phase2-extension"><summary><span>Extender un día de estadía</span><small>Nueva salida: ${datePretty(next)} · ${money(stay.roomRate)} adicionales</small></summary>
+    <div class="phase2-operation-body">
+      <div class="phase2-preview"><strong>Salida actual:</strong> ${datePretty(stay.departure)}<br><strong>Nueva salida:</strong> ${datePretty(next)}<br><strong>Importe:</strong> ${money(stay.roomRate)} (tarifa guardada en esta estadía).</div>
+      ${blocker?`<div class="phase2-warning">${esc(blocker)}</div>`:''}
+      <form id="room-extension-form">
+        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        <div class="form-grid cols-2">
+          ${select('Turno','shift',shiftOptions,'dia')}
+          ${field('Encargado','operator','',{placeholder:'Recepción'})}
+        </div>
+        <button class="btn btn-primary section-gap" type="submit" ${blocker?'disabled':''}>Confirmar una noche adicional</button>
+      </form>
+      <p class="mini-caption">Se revisa si existe una reserva asignada para la noche nueva. No se modifica ninguna reserva anterior.</p>
+    </div></details>`;
+}
+  function renderFinalAccountSection(stay){
+  const due=dueOf(stay),pending=pendingChangeOf(stay);
+  return `<details class="phase2-operation phase2-final" id="phase2-final"><summary><span>Cierre de cuenta final y salida</span><small>${due>0?'Saldo por cobrar '+money(due):'Sin saldo de hospedaje'} · pasar habitación a limpieza</small></summary>
+    <div class="phase2-operation-body">
+      <div class="phase2-total-grid">
+        <div><span>Total hospedaje</span><strong>${money(stay.roomTotal)}</strong></div>
+        <div><span>Varios</span><strong>${money(extrasOf(stay.id))}</strong></div>
+        <div><span>Personas adicionales</span><strong>${money(additionalPeopleOf(stay))}</strong></div>
+        <div><span>Abonado</span><strong>${money(paidOf(stay))}</strong></div>
+        <div class="emphasis"><span>Pago final pendiente</span><strong>${money(due)}</strong></div>
+        <div><span>Vuelto anterior pendiente</span><strong>${money(pending)}</strong></div>
+      </div>
+      <form id="finalize-form">
+        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        ${due>0?`<div class="form-grid cols-2 section-gap">
+          ${select('Cobrar saldo mediante','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
+          ${select('Turno','shift',shiftOptions,'dia')}
+        </div>
+        ${cashChangeFields('final')}
+        <div class="field hidden section-gap" id="final-reference-field"><label for="final-reference">Referencia bancaria *</label><input id="final-reference" name="reference" placeholder="Número de transferencia"></div>`:
+        '<p class="mini-caption section-gap">La cuenta está pagada. No se registrará ningún cobro adicional.</p><input type="hidden" name="shift" value="dia">'}
+        ${field('Encargado del cierre','operator','',{placeholder:'Recepción',required:true})}
+        <button class="btn btn-primary section-gap" type="submit">${due>0?'Cobrar '+money(due)+' y cerrar cuenta':'Cerrar cuenta y registrar salida'}</button>
+        <p class="mini-caption section-gap">El cierre debe quedar pagado. Si hay vuelto no entregado, se solicitará una confirmación y seguirá registrado como deuda del hotel.</p>
+      </form>
+    </div></details>`;
+}
+  function renderStayTimeline(stay){
+  const events=stayHistoryEvents(stay);
+  return `<div class="phase2-timeline"><div class="phase2-timeline-title"><h3>Historial de movimientos</h3>
+    ${btn('Exportar CSV','export-stay-history','btn-secondary btn-sm',`data-id="${esc(stay.id)}"`)}</div>
+    <p class="mini-caption">${events.length} registros · cargos, abonos, consumos, noches y salida</p>
+    ${events.length?`<div class="phase2-timeline-list">${events.map(e=>`<div class="phase2-event ${esc(e.kind)}">
+      <span class="phase2-event-dot"></span>
+      <div class="phase2-event-body"><strong>${esc(e.title)}</strong>
+        <small>${esc(e.description)}</small>
+        <time>${esc(e.date&&Number.isFinite(new Date(e.date).valueOf())?new Date(e.date).toLocaleString('es-EC'):e.date||'—')}</time>
+      </div>
+      <span class="phase2-event-money">${e.amount===null?'—':`${e.kind==='abono'?'−':e.kind==='cargo'?'+':''}${money(e.amount)}`}</span>
+    </div>`).join('')}</div>`:noRows('No hay movimientos todavía.')}
+  </div>`;
+}
+  function renderClosedHistoryDialog(stay){
+  const room=roomOf(stay.roomId),guest=guestOf(stay.guestId);
+  return `<div class="account-overlay" data-action="close-history-dialog" role="presentation">
+    <div class="account-dialog" role="dialog" aria-modal="true" aria-label="Historial de habitación ${esc(room?.number||'—')}" data-account-dialog>
+      <div class="account-dialog-header"><div><span class="eyebrow">HISTORIAL DE ESTADÍA</span><h2>Habitación ${esc(room?.number||'—')}</h2><p>${esc(guestName(guest))} · ${datePretty(stay.arrival)} a ${datePretty(stay.departure)}</p></div>
+        <div class="account-heading-total"><span>Saldo al cerrar</span><strong>${money(dueOf(stay))}</strong></div>
+        <button class="account-close" data-action="close-history-dialog" type="button" aria-label="Cerrar historial">×</button></div>
+      <div class="account-dialog-body">
+        <div class="phase2-total-grid"><div><span>Hospedaje</span><strong>${money(stay.roomTotal)}</strong></div><div><span>Adicionales</span><strong>${money(additionalPeopleOf(stay))}</strong></div><div><span>Varios</span><strong>${money(extrasOf(stay.id))}</strong></div><div><span>Total pagado</span><strong>${money(paidOf(stay))}</strong></div></div>
+        ${renderStayTimeline(stay)}
+        <p class="mini-caption section-gap">Este historial incluye los movimientos registrados en la aplicación. No equivale a una factura electrónica.</p>
+      </div></div></div>`;
+}
   function renderRoomAccount(room,stay){
     const guest=stay?guestOf(stay.guestId):null,owed=stay?pendingChangeOf(stay):0,due=stay?dueOf(stay):0;
     const charges=stay?db.extras.filter(e=>e.stayId===stay.id):[];
