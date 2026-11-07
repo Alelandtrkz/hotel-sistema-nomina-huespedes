@@ -29,3 +29,5 @@ jobs:
         run: node tests/fase2.test.cjs
       - name: Probar recuperación segura del administrador
         run: node tests/auth-recovery.test.cjs
+      - name: Verificar un cliente con varias habitaciones
+        run: node tests/multihabitacion.test.cjs

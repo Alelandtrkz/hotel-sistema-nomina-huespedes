@@ -246,7 +246,7 @@
       }
       if(!uiLoaded) {
         uiLoaded=true;
-        var script=document.createElement("script");script.src="./app.js?v=0.5-fase2";
+        var script=document.createElement("script");script.src="./app.js?v=0.7-multihabitacion";
         script.onerror=function(){status("No se pudo cargar la aplicación",true);};
         document.body.appendChild(script);
       }
