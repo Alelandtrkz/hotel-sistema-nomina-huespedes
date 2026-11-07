@@ -34,12 +34,13 @@ function bookingForm(extra={}){
   paymentMethod:'efectivo',paymentAmount:'50',cashTendered:'55',changeStatus:'pendiente',shift:'dia',invoice:'no',notes:'',
   ...extra};
 }
+function wrapForm(data){return {data,elements:{namedItem(){return null;}}};}
 function setup(extraRooms=[{key:'batch1'}]){
  const db=t.defaults();
  t.setDB(db);
  t.setUI({...t.getUI(),checkinExtraRooms:extraRooms,checkinRowSeq:extraRooms.length,selectedRoomId:null,prefillBookingId:null,
    checkinDraft:bookingForm(),view:'ingreso'});
- fake['checkin-form']={data:bookingForm()};
+ fake['checkin-form']=wrapForm(bookingForm() );
  return db;
 }
 test('Cotización de habitaciones 02 individual $20 y 03 doble $30 suma $50',()=>{
@@ -98,7 +99,7 @@ test('Habitación ocupada no puede agregarse a otro cliente',()=>{
  d.stays=[{id:'other',guestId:'other-guest',roomId:'room-03',status:'activa',arrival:DATE,departure:NEXT}];
  const p=t.prepareCheckinGroup(bookingForm());
  assert(p.error&&/no está disponible/i.test(p.error));
- fake['checkin-form']={data:bookingForm()};
+ fake['checkin-form']=wrapForm(bookingForm() );
  t.processCheckin();
  assert.equal(d.guests.length,0);
  assert.equal(d.stays.length,1);
@@ -121,7 +122,7 @@ test('Anticipo reservado se descuenta una sola vez de la habitación principal',
  assert.equal(p.items[1].advance,0);
  assert.equal(p.items[0].payment,10);
  assert.equal(p.items[1].payment,30);
- fake['checkin-form']={data:bookingForm({paymentAmount:'40',cashTendered:'40'})};
+ fake['checkin-form']=wrapForm(bookingForm({paymentAmount:'40',cashTendered:'40'}) );
  t.processCheckin();
  assert.equal(d.stays[0].advance,10);
  assert.equal(d.stays[1].advance,0);
@@ -139,7 +140,7 @@ test('Abono parcial por transferencia se distribuye sin generar vuelto ni duplic
  assert.equal(p.items[0].payment,20);
  assert.equal(p.items[1].payment,5);
  assert.equal(p.items[0].tender.change,0);
- fake['checkin-form']={data:form};
+ fake['checkin-form']=wrapForm(form );
  t.processCheckin();
  assert.equal(t.dueOf(d.stays[0]),0);
  assert.equal(t.dueOf(d.stays[1]),25);
@@ -148,7 +149,7 @@ test('Abono parcial por transferencia se distribuye sin generar vuelto ni duplic
 });
 test('El formulario anterior con una sola habitación sigue funcionando',()=>{
  const d=setup([]);
- fake['checkin-form']={data:bookingForm({paymentAmount:'20',cashTendered:'20'})};
+ fake['checkin-form']=wrapForm(bookingForm({paymentAmount:'20',cashTendered:'20'}) );
  t.processCheckin();
  assert.equal(d.guests.length,1);
  assert.equal(d.stays.length,1);
