@@ -819,6 +819,100 @@
     db.extras.push(paidCashRecord({id:uid('extra'),stayId,productId:'manual',productName:name,category:CATEGORIES[f.category]?f.category:'otros',quantity:1,price:asMoney(amount),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt:soldAt},tender,soldAt,f.shift||'dia'));
     persist();render();toast('Cargo adicional registrado.');
   }
+  function processRoomExtra(){
+  const f=readForm('room-extra-form'),stay=stayOf(f.stayId),product=productOf(f.productId);
+  if(!stay||stay.status!=='activa'){toast('La habitación ya no está ocupada.','error');return;}
+  if(!product){toast('Seleccione un producto para agregar a la habitación.','error');return;}
+  const success=appendExtra({...f,method:'efectivo',stayId:stay.id},product);
+  if(success){render();toast('Consumo cargado a Hab. '+(roomOf(stay.roomId)?.number||'—')+': '+product.name+'. No se ha cobrado aún.');}
+}
+  function processAdditionalPerson(){
+  const f=readForm('room-person-form'),stay=stayOf(f.stayId);
+  if(!stay||stay.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
+  const name=String(f.name||'').trim().replace(/\s+/g,' '),category=f.category,nights=Number(f.nights);
+  const maxNights=getNightCount(stay.arrival,stay.departure);
+  if(!name||name.length>100){toast('Ingrese el nombre de la persona adicional (máximo 100 caracteres).','error');return;}
+  if(!['adulto','nino'].includes(category)){toast('Seleccione una categoría de edad válida.','error');return;}
+  if(!Number.isSafeInteger(nights)||nights<1||nights>maxNights||nights>365){toast('Indique noches a cobrar entre 1 y las noches actuales de estadía.','error');return;}
+  const unitPrice=Number(category==='adulto'?db.config.extraPersonRate:db.config.childRate);
+  const cents=moneyCents(unitPrice);
+  if(!Number.isFinite(unitPrice)||!Number.isSafeInteger(cents)||cents<=0||unitPrice>10000){toast('Configure una tarifa adicional válida antes de continuar.','error');return;}
+  const amount=asMoney(cents*nights/100);
+  if(!window.confirm('¿Agregar a '+name+' como '+(category==='adulto'?'adulto':'niño de 6 a 12 años')+' por '+nights+' noche(s)? Se cargarán '+money(amount)+' a la habitación.'))return;
+  const createdAt=new Date().toISOString();
+  if(!Array.isArray(stay.additionalPeople))stay.additionalPeople=[];
+  stay.additionalPeople.push({id:uid('person'),name,category,nights,unitPrice:asMoney(unitPrice),amount,
+    operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt});
+  persist();render();toast('Persona adicional registrada. Cargo a la habitación: '+money(amount)+'.');
+}
+  function processExtendStay(){
+  const f=readForm('room-extension-form'),stay=stayOf(f.stayId);
+  if(!stay||stay.status!=='activa'){toast('La estadía no está activa.','error');return;}
+  const newDeparture=addIsoDays(stay.departure,1),problem=extensionBlocker(stay,newDeparture);
+  if(problem){toast(problem,'error');return;}
+  const price=Number(stay.roomRate),cents=moneyCents(price);
+  if(!Number.isFinite(price)||!Number.isSafeInteger(cents)||cents<=0||price>10000){toast('La tarifa de la habitación no es válida.','error');return;}
+  const oldDeparture=stay.departure;
+  if(!window.confirm('¿Extender la habitación '+(roomOf(stay.roomId)?.number||'—')+' del '+datePretty(oldDeparture)+' al '+datePretty(newDeparture)+'? Se añadirán '+money(price)+' al saldo.'))return;
+  const createdAt=new Date().toISOString();
+  if(!Array.isArray(stay.extensions))stay.extensions=[];
+  stay.extensions.push({id:uid('extension'),oldDeparture,newDeparture,addedNights:1,rate:asMoney(price),
+    amount:asMoney(price),operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt});
+  stay.departure=newDeparture;stay.roomTotal=asMoney(Number(stay.roomTotal||0)+price);
+  persist();render();toast('Nueva salida: '+datePretty(newDeparture)+'. Cargo agregado: '+money(price)+'.');
+}
+  function finishStay(stay,stamp,operator){
+  const room=roomOf(stay.roomId);
+  if(room)room.status='limpieza';
+  stay.status='finalizada';stay.actualCheckout=stamp;stay.closedBy=operator;
+  stay.closureSummary={total:totalOf(stay),paid:paidOf(stay),balance:dueOf(stay),
+    cashChangePending:pendingChangeOf(stay),closedAt:stamp,operator};
+  if(stay.reservationId){
+    const booking=reservationOf(stay.reservationId);if(booking)booking.status='finalizada';
+  }
+}
+  function processFinalSettlement(){
+  const f=readForm('finalize-form'),stay=stayOf(f.stayId);
+  if(!stay||stay.status!=='activa'){toast('Esta habitación ya no tiene una estadía activa.','error');return;}
+  const operator=String(f.operator||'').trim(),due=dueOf(stay),stamp=new Date().toISOString();
+  if(!operator||operator.length>100){toast('Indique el encargado que cierra la cuenta.','error');return;}
+  if(paidOf(stay)>totalOf(stay)+0.001){toast('La cuenta tiene un pago excedente. Requiere conciliación antes de cerrar.','error');return;}
+  let tender=null;
+  if(due>0){
+    if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione un método de pago final.','error');return;}
+    if(f.method==='transferencia'&&!String(f.reference||'').trim()){toast('Ingrese la referencia de transferencia antes de cerrar.','error');return;}
+    tender=resolveTendered(f.cashTendered,f.method,due,f.changeStatus);
+    if(tender.error){toast(tender.error,'error');return;}
+  }
+  const remainingChange=asMoney(pendingChangeOf(stay)+(tender?.status==='pendiente'?tender.change:0));
+  if(remainingChange>0&&!window.confirm('Este cierre dejará '+money(remainingChange)+' de vuelto pendiente a favor del huésped. Continuará en caja como obligación. ¿Desea cerrar así?'))return;
+  const room=roomOf(stay.roomId);
+  if(!window.confirm('¿Cerrar la cuenta de Hab. '+(room?.number||'—')+' y registrar la salida?'+(due>0?' Se cobrará '+money(due)+'.':'')))return;
+  if(due>0){
+    const shift=f.shift==='noche'?'noche':'dia';
+    stay.payments=Array.isArray(stay.payments)?stay.payments:[];
+    stay.payments.push(paidCashRecord({id:uid('pay'),amount:asMoney(due),method:f.method,
+      shift,reference:f.method==='transferencia'?String(f.reference).trim():'',createdAt:stamp,
+      operator,finalPayment:true},tender,stamp,shift));
+  }
+  finishStay(stay,stamp,operator);
+  persist();
+  ui.selectedRoomId=null;ui.selectedStayId=null;ui.selectedHistoryStayId=stay.id;
+  navigate('salidas');
+  toast('Cuenta finalizada: Hab. '+(room?.number||'—')+'. Saldo '+money(dueOf(stay))+'. Habitación pendiente de limpieza.');
+}
+  function exportStayHistory(stayId){
+  const stay=stayOf(stayId),room=roomOf(stay?.roomId),guest=guestOf(stay?.guestId);
+  if(!stay){toast('No se encontró la estadía.','error');return;}
+  const events=stayHistoryEvents(stay);
+  const rows=[['Hotel Unicornio - movimientos de habitación',room?.number||'—'],['Huésped',guestName(guest)],
+    ['Inicio',stay.arrival,'Salida prevista',stay.departure],
+    ['Fecha y hora','Tipo','Concepto','Detalle','Importe USD'],
+    ...events.map(e=>[e.date,e.kind,e.title,e.description,e.amount===null?'':e.kind==='abono'?-e.amount:e.amount]),
+    ['Total cuenta','','','',totalOf(stay)],['Total abonado','','','',paidOf(stay)],
+    ['Saldo actual','','','',dueOf(stay)],['Vuelto pendiente','','','',pendingChangeOf(stay)]];
+  downloadCsv(rows,'movimientos-habitacion-'+(room?.number||'s-n')+'-'+String(stay.id).replace(/[^a-z0-9-]/gi,'')+'.csv');
+}
   function processStock(){
     const f=readForm('stock-form'),p=productOf(f.productId),q=Number(f.quantity),mode=f.mode;
     if(!p||!Number.isInteger(q)||q<0||q>100000||!['conteo','entrada','merma'].includes(mode)){toast('Seleccione un producto y cantidad válida.','error');return;}
