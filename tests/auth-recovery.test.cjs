@@ -12,7 +12,7 @@ function make(id){
 }
 const doc={
   readyState:'loading',head:{appendChild(){}},body:{
-    prepend(node){el[node.id]=node;for(const m of node.innerHTML.matchAll(/id="([^"]+)"/g))make(m[1]);},
+    prepend(node){el[node.id]=node;for(const m of node.innerHTML.matchAll(/id="([^"]+)"/g))make(m[1]);if(node.innerHTML.includes('id="cloud-recovery-form" hidden'))make('cloud-recovery-form').hidden=true;},
     appendChild(){}
   },
   documentElement:{classList:{add(){}}},
