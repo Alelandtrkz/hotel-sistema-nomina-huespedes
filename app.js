@@ -188,6 +188,7 @@
     if(booking.changeStatus==='pendiente')add(booking.createdAt,'Vuelto de anticipo pendiente','Obligación de devolución al huésped',booking.cashChange,'vuelto');
     if(booking.changeStatus==='dado')add(booking.changeDeliveredAt||booking.createdAt,'Vuelto de anticipo entregado','Salida de caja',booking.cashChange,'vuelto');
   }
+  if(Number(stay.discountTotal)>0)add(stay.createdAt,'Tarifa de alojamiento con descuento','Ahorro de '+money(stay.discountTotal)+' sobre la tarifa normal · no se aplica a consumos ni acompañantes',null,'info');
   if(stay.status==='finalizada')add(stay.actualCheckout||stay.departure,'Cuenta cerrada y salida','Saldo del hospedaje: '+money(dueOf(stay))+' · habitación enviada a limpieza',null,'info');
   return events.sort((a,b)=>a.date.localeCompare(b.date)||Number(a.id)-Number(b.id));
 }
@@ -861,26 +862,36 @@
     const ci=document.getElementById('checkin-form');
     if(ci){
       const f=readForm('checkin-form'),estimate=checkinGroupEstimate(f),n=estimate.nights,
-        r=rate(f.type,f.breakfast),total=estimate.total,
-        adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=asMoney(f.paymentAmount);
+        r=checkinNightRate(f.type,f.breakfast,f.paymentMethod),total=estimate.total,
+        adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=checkinPaymentAmount(f,total,adv),
+        choice=checkinPaymentChoice(f.paymentMethod);
       const mappings={
-        'checkin-night-rate':r===null?'Por definir':money(r),
-        'preview-rate':r===null?'Por definir':money(r),
+        'checkin-night-rate':r===null?'No aplica / revisar':money(r),
+        'preview-rate':r===null?'No aplica / revisar':money(r),
         'preview-nights':n,
         'checkin-total':total===null?'Por definir':money(total),
         'preview-advance':money(adv),
         'preview-payment':money(paid),
+        'checkin-auto-payment':money(paid),
         'preview-due':total===null?'Por definir':money(Math.max(0,total-adv-paid))
       };
       Object.entries(mappings).forEach(([id,val])=>{const el=document.getElementById(id);if(el)el.textContent=val;});
+      document.getElementById('transfer-field')?.classList.toggle('hidden',choice?.method!=='transferencia');
+      const help=document.getElementById('checkin-payment-help');
+      if(help)help.textContent=choice?.method==='por_cobrar'
+        ?'Por cobrar: no se registra dinero recibido. El total queda pendiente en la cuenta de cada habitación.'
+        :'Pago completo: se cobra automáticamente la totalidad pendiente de las habitaciones. Los abonos parciales se registran después desde cada cuenta.';
+      const invalidDiscount=Boolean(choice?.discounted&&(f.invoice==='si'||Boolean(ui.prefillBookingId)||
+        checkinAssignments(f).some(item=>item.breakfast!=='sin')));
+      document.getElementById('discount-rule-warning')?.classList.toggle('hidden',!invalidDiscount);
       const breakdown=document.getElementById('checkin-room-breakdown');
       if(breakdown)breakdown.outerHTML=renderCheckinBreakdown(f);
       for(const entry of estimate.items.slice(1)){
         const rateEl=document.getElementById(entry.key+'-rate'),totalEl=document.getElementById(entry.key+'-total');
-        if(rateEl)rateEl.textContent=entry.nightly===null?'Por definir':money(entry.nightly);
+        if(rateEl)rateEl.textContent=entry.nightly===null?'No aplica / revisar':money(entry.nightly);
         if(totalEl)totalEl.textContent=entry.total===null?'Por definir':money(entry.total);
       }
-      updateCashPreview('checkin-form','checkin',paid,f.paymentMethod);
+      updateCashPreview('checkin-form','checkin',paid,choice?.method||'por_cobrar');
     }
     const rForm=document.getElementById('reservation-form');
     if(rForm){const f=readForm('reservation-form'),n=getNightCount(f.arrival,f.departure),r=rate(f.type,f.breakfast);for(const [id,val] of Object.entries({'reservation-rate':r===null?'Por definir':money(r),'reservation-nights':n+' noches','reservation-total':r===null?'Por definir':money(n*r),'reservation-deposit':r===null?'Por definir':money(n*r*.5)})){const el=document.getElementById(id);if(el)el.textContent=val;}updateCashPreview('reservation-form','reservation',asMoney(f.advance||0),f.advanceMethod);}
@@ -987,6 +998,8 @@
       id:uid('stay'),guestId:guest.id,roomId:item.room.id,type:item.type,
       arrival:f.arrival,departure:f.departure,breakfast:item.breakfast,
       roomRate:item.nightly,roomTotal:item.total,advance:item.advance,payments:[],
+      standardRoomRate:item.normalNightly,discountTotal:item.saved,
+      tariffMode:plan.discounted?'descuento_sin_factura':'normal',
       invoiceRequested:f.invoice==='si',
       invoiceDetails:f.invoice==='si'?{name:f.invoiceName.trim(),identification:f.invoiceId.trim(),
         address:f.invoiceAddress.trim(),email:f.invoiceEmail.trim()}:null,
@@ -995,8 +1008,8 @@
       status:'activa',createdAt:checkinAt
     };
     if(item.payment>0)s.payments.push(paidCashRecord({
-      id:uid('pay'),amount:item.payment,method:f.paymentMethod,
-      reference:f.paymentMethod==='transferencia'?String(f.transferCode||'').trim():'',
+      id:uid('pay'),amount:item.payment,method:plan.method,
+      reference:plan.method==='transferencia'?String(f.transferCode||'').trim():'',
       shift:f.shift||'dia',createdAt:checkinAt,
       ...(paymentGroupId?{paymentGroupId}:{}),
     },item.tender,checkinAt,f.shift||'dia'));
@@ -1376,7 +1389,7 @@
     if(el.closest('#checkin-form')){
       ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
       if(['type','arrival','departure','roomId'].includes(el.name)||/^batch\d+__(?:type|roomId)$/.test(el.name))refreshRoomSelect('ingreso');
-      if(el.name==='paymentMethod'){const transfer=el.value==='transferencia';document.getElementById('transfer-field')?.classList.toggle('hidden',!transfer);}
+      if(el.name==='paymentMethod'){const transfer=checkinPaymentChoice(el.value)?.method==='transferencia';document.getElementById('transfer-field')?.classList.toggle('hidden',!transfer);}
       if(el.name==='invoice')document.getElementById('invoice-fields')?.classList.toggle('hidden',el.value!=='si');
       updatePricing();return;
     }
