@@ -632,6 +632,7 @@
       }
       case 'export-roster':exportRoster();break;
       case 'reset-demo':{
+        if(window.hotelCloud?.ready){toast('La opción de borrar todos los datos está deshabilitada mientras se usa la base compartida.','error');break;}
         if(!window.confirm('Se eliminarán todos los datos de demostración de este navegador. ¿Continuar?'))break;
         db=defaults();ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};persist();render();toast('Demostración restablecida.');break;
       }
