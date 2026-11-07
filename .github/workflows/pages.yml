@@ -23,6 +23,14 @@ jobs:
     steps:
       - name: Descargar código
         uses: actions/checkout@v4
+      - name: Revisar sintaxis antes de publicar
+        run: |
+          node --check app.js
+          node --check cloud.js
+      - name: Probar fase 1 y fase 2 antes de publicar
+        run: |
+          node tests/fase1.test.cjs
+          node tests/fase2.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos
