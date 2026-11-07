@@ -398,6 +398,23 @@
         <p class="mini-caption section-gap">Este historial incluye los movimientos registrados en la aplicación. No equivale a una factura electrónica.</p>
       </div></div></div>`;
 }
+  function renderClientRooms(stay){
+  if(!stay)return '';
+  const all=activeStays().filter(item=>item.guestId===stay.guestId).slice()
+    .sort((a,b)=>(roomOf(a.roomId)?.number||'').localeCompare(roomOf(b.roomId)?.number||'',undefined,{numeric:true}));
+  if(all.length<2)return '';
+  const sum=asMoney(all.reduce((n,item)=>n+dueOf(item),0));
+  return `<section class="client-rooms-account" aria-label="Habitaciones vinculadas a este cliente">
+    <div class="client-rooms-title"><div><strong>Habitaciones del mismo titular</strong><p>Un cliente tiene ${all.length} habitaciones activas. Cada habitación posee sus propios cargos y pagos.</p></div>
+      <div class="client-rooms-sum"><span>Por cobrar entre todas</span><strong>${money(sum)}</strong></div></div>
+    <div class="client-rooms-links">${all.map(item=>{
+      const current=item.id===stay.id,number=roomOf(item.roomId)?.number||'—';
+      return current?`<span class="client-room-current" aria-current="true">Hab. ${esc(number)} · Actual · ${money(dueOf(item))}</span>`:
+        btn('Hab. '+esc(number)+' · '+money(dueOf(item)),'select-room','btn-secondary btn-sm',
+          `type="button" data-id="${esc(item.roomId)}" aria-label="Abrir cuenta de habitación ${esc(number)}"`);
+    }).join('')}</div>
+  </section>`;
+}
   function renderRoomAccount(room,stay){
   const guest=stay?guestOf(stay.guestId):null,owed=stay?pendingChangeOf(stay):0,due=stay?dueOf(stay):0;
   const charges=stay?db.extras.filter(e=>e.stayId===stay.id):[];
@@ -420,6 +437,7 @@
       </div>
       ${owed>0?`<div class="account-change-due"><strong>Vuelto pendiente de entregar: ${money(owed)}</strong><span>Es dinero a favor del huésped y no reduce el saldo de hospedaje.</span></div>`:''}
     </div>
+    ${renderClientRooms(stay)}
     <div class="account-columns"><section>
       <h3>Datos del huésped</h3>
       <div class="account-detail"><span>Nombre</span><strong>${esc(guestName(guest)||'No disponible')}</strong></div>
