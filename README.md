@@ -12,7 +12,8 @@ La ficha de **Registro / ingreso** permite contratar varias habitaciones a nombr
 
 ### Límites actuales
 - La cuenta y el cierre final se mantienen **por habitación**, aunque exista un saldo conjunto informativo. Aún no hay un botón de liquidación final de todas las habitaciones en una única operación.
-- Como en versiones anteriores, el estado compartido se almacena en un documento JSONB con **control de revisiones**. Una asignación concurrente en dos dispositivos puede generar un conflicto y recarga, pero no existe todavía una transacción de base de datos que garantice exclusión exclusiva sin carreras.
+- El estado compartido se almacena en un documento JSONB con **control de revisiones**. También se instaló en Supabase un **trigger PostgreSQL** que rechaza cualquier documento con dos estadías activas en la misma habitación, incluso si se intentara grabar directamente. Se probó con una duplicación artificial dentro de una transacción que se revirtió. Aun así, los cobros e inventarios siguen sin ser operaciones transaccionales por separado.
+- Trigger de unicidad: [supabase/multiroom-unique-active-room.sql](supabase/multiroom-unique-active-room.sql). Está aplicado al proyecto de Supabase y no exige volver a cargar datos.
 - Versión beta: valide las operaciones con información de prueba antes de usarla con cobros reales.
 - Prueba local: `node tests/multihabitacion.test.cjs`. Las pruebas automatizadas se ejecutan antes de cada despliegue en GitHub Actions.
 
