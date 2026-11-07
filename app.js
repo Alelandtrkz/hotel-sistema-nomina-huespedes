@@ -399,54 +399,80 @@
       </div></div></div>`;
 }
   function renderRoomAccount(room,stay){
-    const guest=stay?guestOf(stay.guestId):null,owed=stay?pendingChangeOf(stay):0,due=stay?dueOf(stay):0;
-    const charges=stay?db.extras.filter(e=>e.stayId===stay.id):[];
-    const pays=stay?(stay.payments||[]):[];
-    const history=stay?`
-      <div class="account-summary">
-        <div class="account-main-total"><span>Valor por cobrar ahora</span><strong class="${due>0?'text-red':'text-green'}">${money(due)}</strong></div>
-        <div class="account-total-grid"><div><span>Tarifa por noche</span><strong>${money(stay.roomRate)}</strong></div><div><span>Noches</span><strong>${getNightCount(stay.arrival,stay.departure)}</strong></div><div><span>Hospedaje</span><strong>${money(stay.roomTotal)}</strong></div><div><span>Varios</span><strong>${money(extrasOf(stay.id))}</strong></div><div><span>Total cuenta</span><strong>${money(totalOf(stay))}</strong></div><div><span>Pagado</span><strong>${money(paidOf(stay))}</strong></div></div>
-        ${owed>0?`<div class="account-change-due"><strong>Vuelto pendiente de entregar: ${money(owed)}</strong><span>Es dinero a favor del huésped y no reduce el saldo de hospedaje.</span></div>`:''}
+  const guest=stay?guestOf(stay.guestId):null,owed=stay?pendingChangeOf(stay):0,due=stay?dueOf(stay):0;
+  const charges=stay?db.extras.filter(e=>e.stayId===stay.id):[];
+  const pays=stay?(stay.payments||[]):[];
+  const extensions=stay?(stay.extensions||[]):[];
+  const extrasPeople=stay?(stay.additionalPeople||[]):[];
+  const originalNights=stay?Math.max(1,getNightCount(stay.arrival,stay.departure)-extensions.reduce((n,e)=>n+Number(e.addedNights||1),0)):0;
+  const history=stay?`
+    <div class="account-summary">
+      <div class="account-main-total"><span>Valor por cobrar ahora</span><strong class="${due>0?'text-red':'text-green'}">${money(due)}</strong></div>
+      <div class="account-total-grid">
+        <div><span>Tarifa por noche</span><strong>${money(stay.roomRate)}</strong></div>
+        <div><span>Noches totales</span><strong>${getNightCount(stay.arrival,stay.departure)}</strong></div>
+        <div><span>Hospedaje</span><strong>${money(stay.roomTotal)}</strong></div>
+        <div><span>Varios</span><strong>${money(extrasOf(stay.id))}</strong></div>
+        <div><span>Personas adicionales</span><strong>${money(additionalPeopleOf(stay))}</strong></div>
+        <div><span>Total cuenta</span><strong>${money(totalOf(stay))}</strong></div>
+        <div><span>Abonos y anticipos</span><strong>${money(paidOf(stay))}</strong></div>
+        <div><span>Acompañantes facturados</span><strong>${extrasPeople.length}</strong></div>
       </div>
-      <div class="account-columns"><section>
-        <h3>Datos de la persona</h3>
-        <div class="account-detail"><span>Nombre</span><strong>${esc(guestName(guest)||'No disponible')}</strong></div>
-        <div class="account-detail"><span>Documento</span><strong>${esc(guest?.document||'—')}</strong></div>
-        <div class="account-detail"><span>Teléfono</span><strong>${esc(guest?.phone||'—')}</strong></div>
-        <div class="account-detail"><span>Correo</span><strong>${esc(guest?.email||'—')}</strong></div>
-        <div class="account-detail"><span>Ingreso</span><strong>${datePretty(stay.arrival)}</strong></div>
-        <div class="account-detail"><span>Salida prevista</span><strong>${datePretty(stay.departure)}</strong></div>
-        <div class="account-detail"><span>Desayuno</span><strong>${stay.breakfast==='con'?'Incluido':'No incluido'}</strong></div>
-      </section><section>
-        <h3>Movimientos de la habitación</h3>
-        <div class="account-line"><div><strong>Hospedaje · ${getNightCount(stay.arrival,stay.departure)} noche(s)</strong><small>${money(stay.roomRate)} / noche</small></div><strong>${money(stay.roomTotal)}</strong></div>
-        ${charges.map(e=>`<div class="account-line"><div><strong>${esc(e.productName)}</strong><small>${e.quantity} × ${money(e.price)}</small></div><strong>${money(e.price*e.quantity)}</strong></div>`).join('')}
-        ${stay.advance>0?`<div class="account-line paid"><div><strong>Anticipo</strong><small>Reserva vinculada</small></div><strong>−${money(stay.advance)}</strong></div>`:''}
-        ${pays.map(p=>`<div class="account-line paid"><div><strong>Pago ${p.method==='transferencia'?'transferencia':'efectivo'}</strong><small>${esc(p.createdAt?new Date(p.createdAt).toLocaleString('es-EC'):'')} ${p.cashChange>0?' · recibido '+money(p.cashTendered)+' · vuelto '+money(p.cashChange)+' ('+(p.changeStatus==='pendiente'?'pendiente':'dado')+')':''}</small></div><strong>−${money(p.amount)}</strong></div>`).join('')}
-        ${!charges.length&&!pays.length&&!(stay.advance>0)?'<p class="mini-caption">Sin otros movimientos todavía.</p>':''}
-      </section></div>
-      <div class="account-actions">
-        ${btn('Agregar varios','room-add-extras','btn-secondary',`data-id="${esc(stay.id)}"`)}
-        ${btn('Ver salidas y cobros','room-go-checkout','btn-secondary',`data-id="${esc(stay.id)}"`)}
-        <span class="mini-caption">Personas adicionales y extensión de noches: próxima fase.</span>
-      </div>
-      <div class="account-payment-section"><h3>Cobrar a esta habitación</h3><p class="mini-caption">Se puede pagar en una sola operación o registrar abonos parciales. Si recibe más efectivo, marque si el vuelto se entregó o quedó pendiente.</p>
-       ${renderPaymentForm(stay)}
-      </div>
-      ${owed>0?`<div class="account-change-actions"><strong>Vueltos pendientes a esta habitación</strong>${changeMovements().filter(x=>changePending(x.owner)>0&&((x.stayId===stay.id)||(stay.reservationId&&x.source==='reserva'&&x.id===stay.reservationId))).map(x=>`<div class="account-line"><div><span>${esc(x.label)}</span><strong>${money(changePending(x.owner))}</strong></div>${btn('Entregar vuelto','settle-change','btn-secondary btn-sm',`data-source="${esc(x.source)}" data-id="${esc(x.id)}"`)}</div>`).join('')}</div>`:''}
-    `: `<div class="account-empty"><p>${room.status==='arrendada'?'Habitación arrendada; fuera del inventario operativo.':room.status==='limpieza'?'En limpieza. Marque disponible cuando esté lista.':'No hay estadía activa en esta habitación.'}</p>
+      ${owed>0?`<div class="account-change-due"><strong>Vuelto pendiente de entregar: ${money(owed)}</strong><span>Es dinero a favor del huésped y no reduce el saldo de hospedaje.</span></div>`:''}
+    </div>
+    <div class="account-columns"><section>
+      <h3>Datos del huésped</h3>
+      <div class="account-detail"><span>Nombre</span><strong>${esc(guestName(guest)||'No disponible')}</strong></div>
+      <div class="account-detail"><span>Documento</span><strong>${esc(guest?.document||'—')}</strong></div>
+      <div class="account-detail"><span>Teléfono</span><strong>${esc(guest?.phone||'—')}</strong></div>
+      <div class="account-detail"><span>Correo</span><strong>${esc(guest?.email||'—')}</strong></div>
+      <div class="account-detail"><span>Ingreso</span><strong>${datePretty(stay.arrival)}</strong></div>
+      <div class="account-detail"><span>Salida prevista</span><strong>${datePretty(stay.departure)}</strong></div>
+      <div class="account-detail"><span>Desayuno</span><strong>${stay.breakfast==='con'?'Incluido':'No incluido'}</strong></div>
+      ${stay.notes?`<div class="account-detail"><span>Observaciones</span><strong>${esc(stay.notes)}</strong></div>`:''}
+    </section><section>
+      <h3>Desglose de la cuenta</h3>
+      <div class="account-line"><div><strong>Hospedaje inicial · ${originalNights} noche(s)</strong><small>${money(stay.roomRate)} / noche</small></div><strong>${money(initialLodgingOf(stay))}</strong></div>
+      ${extensions.map(e=>`<div class="account-line"><div><strong>Ampliación de estadía</strong><small>${datePretty(e.oldDeparture)} → ${datePretty(e.newDeparture)}</small></div><strong>${money(e.amount)}</strong></div>`).join('')}
+      ${extrasPeople.map(p=>`<div class="account-line"><div><strong>Persona adicional: ${esc(p.name||'Acompañante')}</strong><small>${p.category==='adulto'?'Adulto':'Niño de 6 a 12 años'} · ${p.nights} noche(s) × ${money(p.unitPrice)}</small></div><strong>${money(p.amount)}</strong></div>`).join('')}
+      ${charges.map(e=>`<div class="account-line"><div><strong>${esc(e.productName)}</strong><small>${e.quantity} × ${money(e.price)}</small></div><strong>${money(e.price*e.quantity)}</strong></div>`).join('')}
+      ${stay.advance>0?`<div class="account-line paid"><div><strong>Anticipo</strong><small>Reserva vinculada</small></div><strong>−${money(stay.advance)}</strong></div>`:''}
+      ${pays.map(p=>`<div class="account-line paid"><div><strong>Pago por ${p.method==='transferencia'?'transferencia':'efectivo'}</strong><small>${esc(p.createdAt?new Date(p.createdAt).toLocaleString('es-EC'):'')} ${p.cashChange>0?' · recibido '+money(p.cashTendered)+' · vuelto '+money(p.cashChange)+' ('+(p.changeStatus==='pendiente'?'pendiente':'dado')+')':''}</small></div><strong>−${money(p.amount)}</strong></div>`).join('')}
+      ${!charges.length&&!pays.length&&!extrasPeople.length&&!extensions.length&&!(stay.advance>0)?'<p class="mini-caption">Sin otros movimientos todavía.</p>':''}
+    </section></div>
+    <div class="account-actions">
+      ${btn('Catálogo completo de Varios','room-add-extras','btn-secondary',`data-id="${esc(stay.id)}"`)}
+      ${btn('Ver salidas y cobros','room-go-checkout','btn-secondary',`data-id="${esc(stay.id)}"`)}
+      <span class="mini-caption">Todos los cargos y abonos se incluyen en el saldo de esta habitación.</span>
+    </div>
+    <div class="phase2-operation-list">
+      ${renderRoomExtraSection(stay)}
+      ${renderAdditionalPersonSection(stay)}
+      ${renderExtendStaySection(stay)}
+      ${renderFinalAccountSection(stay)}
+    </div>
+    <details class="phase2-history section-gap">
+      <summary>Ver historial completo de movimientos (${stayHistoryEvents(stay).length})</summary>
+      ${renderStayTimeline(stay)}
+    </details>
+    <div class="account-payment-section"><h3>Registrar abono parcial o total</h3><p class="mini-caption">Para pagar y registrar la salida en una sola operación, utilice «Cierre de cuenta final». Si recibe más efectivo, registre el vuelto.</p>
+      ${renderPaymentForm(stay)}
+    </div>
+    ${owed>0?`<div class="account-change-actions"><strong>Vueltos pendientes a esta habitación</strong>${changeMovements().filter(x=>changePending(x.owner)>0&&((x.stayId===stay.id)||(stay.reservationId&&x.source==='reserva'&&x.id===stay.reservationId))).map(x=>`<div class="account-line"><div><span>${esc(x.label)}</span><strong>${money(changePending(x.owner))}</strong></div>${btn('Entregar vuelto','settle-change','btn-secondary btn-sm',`data-source="${esc(x.source)}" data-id="${esc(x.id)}"`)}</div>`).join('')}</div>`:''}
+  `:`<div class="account-empty">
+     <p>${room.status==='arrendada'?'Habitación arrendada; fuera del inventario operativo.':room.status==='limpieza'?'En limpieza. Marque disponible cuando esté lista.':'No hay estadía activa en esta habitación.'}</p>
      ${room.status==='disponible'?btn('Registrar ingreso','start-room-checkin','btn-primary',`data-id="${esc(room.id)}"`):''}
      ${room.status==='limpieza'?btn('Marcar limpia / disponible','mark-room-clean','btn-primary',`data-id="${esc(room.id)}"`):''}
      ${room.status==='disponible'?btn('Marcar pendiente de limpieza','mark-room-dirty','btn-secondary',`data-id="${esc(room.id)}"`):''}
-    </div>`;
-    return `<div class="account-overlay" data-action="close-room-account" role="presentation">
-      <div class="account-dialog" role="dialog" aria-modal="true" aria-label="Cuenta de habitación ${esc(room.number)}" data-account-dialog>
-        <div class="account-dialog-header"><div><span class="eyebrow">CUENTA POR HABITACIÓN</span><h2>Habitación ${esc(room.number)}</h2><p>${esc(LABELS[room.type])} · ${roomStateLabel(room.status)}</p></div>
-          <div class="account-heading-total"><span>Saldo por cobrar</span><strong>${money(due)}</strong></div>
-          <button class="account-close" data-action="close-room-account" type="button" aria-label="Cerrar cuenta de habitación">×</button></div>
-        <div class="account-dialog-body">${history}</div>
-      </div></div>`;
-  }
+   </div>`;
+  return `<div class="account-overlay" data-action="close-room-account" role="presentation">
+    <div class="account-dialog" role="dialog" aria-modal="true" aria-label="Cuenta de habitación ${esc(room.number)}" data-account-dialog>
+      <div class="account-dialog-header"><div><span class="eyebrow">CUENTA POR HABITACIÓN</span><h2>Habitación ${esc(room.number)}</h2><p>${esc(LABELS[room.type])} · ${roomStateLabel(room.status)}</p></div>
+        <div class="account-heading-total"><span>Saldo por cobrar</span><strong>${money(due)}</strong></div>
+        <button class="account-close" data-action="close-room-account" type="button" aria-label="Cerrar cuenta de habitación">×</button></div>
+      <div class="account-dialog-body">${history}</div>
+    </div></div>`;
+}
   function renderRooms(){
     const filtered=db.rooms.filter(r=>(ui.roomFilter==='todos'||ui.roomFilter==='por-cobrar'||r.status===ui.roomFilter)&&(ui.roomTypeFilter==='todos'||r.type===ui.roomTypeFilter));
     const selected=roomOf(ui.selectedRoomId);
