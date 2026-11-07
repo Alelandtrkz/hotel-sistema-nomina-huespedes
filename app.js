@@ -62,6 +62,9 @@
     config:{rates:JSON.parse(JSON.stringify(DEFAULT_RATES)),childRate:5,extraPersonRate:10,earlyFee:10}
   });
   function load(){
+    if(window.hotelCloud?.ready && window.hotelCloud.data){
+      return JSON.parse(JSON.stringify(window.hotelCloud.data));
+    }
     try{
       const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return defaults();
       const data=JSON.parse(raw);const base=defaults();
@@ -70,6 +73,7 @@
     }catch(e){return defaults();}
   }
   let db=load();
+  // This build loads the central Supabase snapshot after verified administrator login.
   const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
   const tomorrow=()=>{const d=new Date();d.setDate(d.getDate()+1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
   const datePretty=s=>{if(!s)return '—';const [y,m,d]=String(s).split('-').map(Number);if(!y||!m||!d)return String(s);return new Intl.DateTimeFormat('es-EC',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(y,m-1,d));};
@@ -98,7 +102,15 @@
   const dueOf=stay=>asMoney(Math.max(0,totalOf(stay)-paidOf(stay)));
   const readForm=id=>{const e=document.getElementById(id);return e?Object.fromEntries(new FormData(e).entries()):{};};
   const validDoc=s=>/^\d{10}$/.test(String(s||'').trim()); // Solo formato, NO verifica titularidad ni acceso al Registro Civil.
-  function persist(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(db));return true;}catch(e){toast('No fue posible guardar los datos en este navegador.','error');return false;}}
+  function persist(){
+    if(window.hotelCloud?.ready){
+      window.hotelCloud.save(db).catch(()=>toast('No se pudo iniciar la sincronización.','error'));
+      return true;
+    }
+    // Offline fallback is for an isolated developer preview only.
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(db));return true;}
+    catch(e){toast('No fue posible guardar los datos en este navegador.','error');return false;}
+  }
   function toast(message,kind='ok'){
     const c=document.getElementById('toasts');const node=document.createElement('div');node.className='toast'+(kind==='error'?' error':'');node.textContent=message;c.append(node);setTimeout(()=>node.remove(),4600);
   }
@@ -127,7 +139,7 @@
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===ui.view));
     document.getElementById('breadcrumb').textContent=VIEWS[ui.view];
     const views={inicio:renderDashboard,habitaciones:renderRooms,ingreso:renderCheckin,reservas:renderReservations,salidas:renderCheckout,varios:renderExtras,inventario:renderStock,caja:renderCash,huespedes:renderGuests,configuracion:renderSettings};
-    document.getElementById('app-view').innerHTML=(views[ui.view]||renderDashboard)()+`<div class="footer-note">Hotel Unicornio · Puerto Francisco de Orellana · Prototipo funcional sin base de datos central</div>`;
+    document.getElementById('app-view').innerHTML=(views[ui.view]||renderDashboard)()+`<div class="footer-note">Hotel Unicornio · Puerto Francisco de Orellana · ${window.hotelCloud?.ready?'Versión beta sincronizada con Supabase':'Prototipo local'}</div>`;
     updatePricing();
   }
   function navigate(view){ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
@@ -440,7 +452,7 @@
   function processGuest(){
     const g=guestData(readForm('guest-form'));
     if(!g.firstName||!g.lastName||!validDoc(g.document)||!g.phone){toast('Complete nombre, apellido, cédula de 10 dígitos y teléfono.','error');return;}
-    const found=Boolean(getGuestByDocument(g.document));saveGuest(g);persist();ui.lookup.huespedes=g.document;ui.lookupMessage.huespedes=found?'Datos del huésped actualizados.':'Nuevo huésped registrado.';ui.lookupResult.huespedes=true;render();toast(found?'Ficha del huésped actualizada.':'Huésped guardado en este navegador.');
+    const found=Boolean(getGuestByDocument(g.document));saveGuest(g);persist();ui.lookup.huespedes=g.document;ui.lookupMessage.huespedes=found?'Datos del huésped actualizados.':'Nuevo huésped registrado.';ui.lookupResult.huespedes=true;render();toast(found?'Ficha del huésped actualizada. Sincronizando...':'Huésped añadido. Sincronizando con Supabase...');
   }
   function processPayment(){
     const f=readForm('payment-form'),s=stayOf(f.stayId),amount=Number(f.amount);
@@ -667,5 +679,14 @@
   document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
   document.getElementById('year').textContent=String(new Date().getFullYear());
   document.getElementById('current-date').textContent=new Intl.DateTimeFormat('es-EC',{weekday:'short',day:'numeric',month:'long',year:'numeric'}).format(new Date());
+  if(window.hotelCloud?.ready){
+    window.hotelCloud.bindUI({replace:function(nextData){
+      db=JSON.parse(JSON.stringify(nextData));
+      // Avoid wiping partially completed forms when another device changes state.
+      if(document.activeElement && document.activeElement.matches('input,select,textarea')) {
+        toast('Hay actualizaciones de otro dispositivo. Se mostrarán al navegar de sección.');
+      }else{render();}
+    }});
+  }
   render();
 })();
