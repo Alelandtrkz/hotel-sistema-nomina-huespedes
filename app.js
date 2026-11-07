@@ -887,6 +887,7 @@
     const guest=b.document&&getGuestByDocument(b.document);
     const parsed=guest?guestData(guest):splitFullName(b.name);
     ui.prefillBookingId=id;
+    ui.checkinExtraRooms=[];ui.checkinRowSeq=0;
     ui.checkinDraft={...initialCheckinDraft(),...parsed,document:b.document||'',phone:b.phone||'',arrival:b.arrival,departure:b.departure,type:b.type,roomId:b.roomId||'',breakfast:b.breakfast,notes:b.notes||'',paymentAmount:'0'};
     ui.lookup.ingreso=b.document||'';ui.lookupMessage.ingreso=guest?'Huésped encontrado y vinculado a la reserva.':'Reserva precargada; confirme los datos del huésped.';ui.lookupResult.ingreso=Boolean(guest);
     navigate('ingreso');
@@ -1184,7 +1185,7 @@
     const action=el.dataset.action,id=el.dataset.id;
     switch(action){
       case 'go-inicio':navigate('inicio');break;
-      case 'go-ingreso':ui.prefillBookingId=null;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
+      case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
       case 'go-salidas':navigate('salidas');break;
@@ -1195,6 +1196,26 @@
       case 'export-cash':exportCash();break;
       case 'pick-product':{const sel=document.querySelector('#extra-form [name=productId]');if(sel){sel.value=id;updatePricing();sel.closest('.panel')?.scrollIntoView({behavior:'smooth',block:'center'});}break;}
       case 'lookup-guest':lookupGuest(el.dataset.scope);break;
+      case 'add-checkin-room':{
+        const data=readForm('checkin-form');
+        ui.checkinDraft={...ui.checkinDraft,...data};
+        const max=db.rooms.filter(r=>r.type!=='arrendada').length;
+        if(checkinAssignments(data).length>=max){toast('No se pueden registrar más habitaciones operativas en este ingreso.','error');break;}
+        ui.checkinRowSeq=Number(ui.checkinRowSeq||0)+1;
+        const key='batch'+ui.checkinRowSeq;
+        if(!ui.checkinExtraRooms)ui.checkinExtraRooms=[];
+        ui.checkinExtraRooms.push({key});
+        ui.checkinDraft[key+'__type']='individual';
+        ui.checkinDraft[key+'__breakfast']='sin';
+        ui.checkinDraft[key+'__roomId']='';
+        render();
+        break;
+      }
+      case 'remove-checkin-room':{
+        ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
+        ui.checkinExtraRooms=(ui.checkinExtraRooms||[]).filter(r=>r.key!==id);
+        render();break;
+      }
       case 'select-room':ui.selectedRoomId=id;navigate('habitaciones');break;
       case 'close-room-account':
         if(e.target.closest('[data-account-dialog]')&&!e.target.closest('.account-close'))break;
@@ -1217,7 +1238,7 @@
       }
       case 'start-room-checkin':{
         const room=roomOf(id);if(!room||room.status!=='disponible'){toast('Esta habitación no está disponible.','error');break;}
-        ui.prefillBookingId=null;ui.checkinDraft={...initialCheckinDraft(),type:room.type==='flex_aire'?'individual':room.type==='flex_ventilador'?'individual_ventilador':room.type,roomId:room.id};ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
+        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft={...initialCheckinDraft(),type:room.type==='flex_aire'?'individual':room.type==='flex_ventilador'?'individual_ventilador':room.type,roomId:room.id};ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       }
       case 'mark-room-dirty':{
         const room=roomOf(id);if(!room||room.status==='ocupada'||room.status==='arrendada'){toast('No puede cambiar una habitación ocupada o arrendada.','error');break;}
@@ -1230,7 +1251,7 @@
       case 'checkin-booking':startBookedCheckin(id);break;
       case 'checkin-guest':{
         const g=guestOf(id);if(!g)break;
-        ui.prefillBookingId=null;ui.checkinDraft={...initialCheckinDraft(),...guestData(g)};ui.lookup.ingreso=g.document;ui.lookupMessage.ingreso='Huésped encontrado: '+guestName(g);ui.lookupResult.ingreso=true;navigate('ingreso');break;
+        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft={...initialCheckinDraft(),...guestData(g)};ui.lookup.ingreso=g.document;ui.lookupMessage.ingreso='Huésped encontrado: '+guestName(g);ui.lookupResult.ingreso=true;navigate('ingreso');break;
       }
       case 'unlink-booking':ui.prefillBookingId=null;render();break;
       case 'cancel-booking':{
@@ -1280,7 +1301,7 @@
     if(el.id==='filter-room-type'){ui.roomTypeFilter=el.value;render();return;}
     if(el.closest('#checkin-form')){
       ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
-      if(['type','arrival','departure'].includes(el.name))refreshRoomSelect('ingreso');
+      if(['type','arrival','departure','roomId'].includes(el.name)||/^batch\d+__(?:type|roomId)$/.test(el.name))refreshRoomSelect('ingreso');
       if(el.name==='paymentMethod'){const transfer=el.value==='transferencia';document.getElementById('transfer-field')?.classList.toggle('hidden',!transfer);}
       if(el.name==='invoice')document.getElementById('invoice-fields')?.classList.toggle('hidden',el.value!=='si');
       updatePricing();return;
@@ -1300,7 +1321,7 @@
   });
   document.addEventListener('reset',e=>{
     const id=e.target?.id;
-    if(id==='checkin-form'){e.preventDefault();ui.checkinDraft=initialCheckinDraft();ui.prefillBookingId=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;render();}
+    if(id==='checkin-form'){e.preventDefault();ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft=initialCheckinDraft();ui.prefillBookingId=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;render();}
     else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();render();}
     else if(id==='guest-form'){e.preventDefault();ui.lookup.huespedes='';ui.lookupMessage.huespedes='';ui.lookupResult.huespedes=false;render();}
   });
