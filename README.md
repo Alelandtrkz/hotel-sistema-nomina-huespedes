@@ -1,3 +1,32 @@
+# Hotel Unicornio v0.8 — Cobro automático, por cobrar y tarifas con descuento
+
+En **Registro / ingreso → 03 · Forma de pago y tarifa** ya no existe un campo donde se pueda escribir manualmente el importe del hospedaje. El valor se calcula con **tarifa por habitación × noches**, descontando anticipos vinculados. No se ha alterado el importe histórico de ninguna estadía.
+
+## Opciones de pago y precio
+- **Por cobrar (tarifa normal):** guarda la estadía y deja el precio como saldo pendiente, **sin registrar entradas de caja**.
+- **Efectivo (tarifa normal):** cobra automáticamente el total pendiente del ingreso. Solo se escribe el **efectivo realmente entregado**, para calcular vuelto.
+- **Transferencia (tarifa normal):** cobra automáticamente el total pendiente; exige referencia bancaria.
+- Las mismas tres opciones existen con **precio con descuento**, aplicando exclusivamente la tabla fija indicada por recepción para hospedaje **sin desayuno y sin solicitud de factura**.
+
+| Habitación | Tarifa especial por noche (USD) |
+|---|---:|
+| Individual con ventilador | 15,00 |
+| Matrimonial con ventilador | 20,00 |
+| Individual con aire acondicionado | 17,00 |
+| Matrimonial con aire acondicionado | 27,00 |
+| Doble con aire acondicionado | 27,00 |
+| Triple con aire acondicionado | 37,00 |
+
+El recepcionista no puede escribir un precio personalizado, alterar el monto automático mediante un campo HTML ni obtener una tarifa **menor** que el límite configurado para ese tipo. La aplicación también bloquea descuentos con desayuno, solicitudes de factura o reservas con tarifa previamente confirmada. La condición comercial de descuento no exime al hotel de sus obligaciones tributarias y de emisión de comprobantes cuando corresponda.
+
+**Sin descuentos para adicionales:** personas adultas, niños, varios y otros servicios mantienen sus importes normales. Las nuevas tarifas se aplican al **hospedaje**, no a esos conceptos.
+
+Con varias habitaciones, el precio especial de cada categoría se calcula por separado y se muestra el total conjunto. En ingreso, el pago es **completo o por cobrar**; los abonos parciales, cuando sean necesarios, se registran más tarde desde la cuenta de cada habitación. El vuelto se registra una sola vez al distribuir un pago grupal.
+
+**Seguridad operativa:** el sistema sigue en beta con documento JSONB compartido, RLS, administrador verificado y control de versiones. Para cobros reales simultáneos todavía son necesarias transacciones independientes y auditoría. Las nuevas pruebas automáticas solo usan datos ficticios.
+
+---
+
 # Hotel Unicornio v0.7 — un cliente con varias habitaciones
 
 La ficha de **Registro / ingreso** permite contratar varias habitaciones a nombre de un solo cliente, por ejemplo habitación 02 y habitación 03 para una familia. El titular se guarda **una sola vez** en `hotel_guests`, y cada habitación recibe una estadía independiente dentro del estado compartido de Supabase. Cada habitación ocupada solo puede tener **una estadía/titular activo** a la vez.
