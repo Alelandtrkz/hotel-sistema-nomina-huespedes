@@ -54,7 +54,7 @@ test('Cotización de habitaciones 02 individual $20 y 03 doble $30 suma $50',()=
  const html=t.renderCheckin();
  assert(html.includes('Más habitaciones para este mismo cliente'));
  assert(html.includes('Agregar otra habitación'));
- assert(html.includes('TOTAL DE LAS HABITACIONES'));
+ assert(html.includes('TOTAL HOSPEDAJE + VARIOS'));
  assert(html.includes('50,00'));
 });
 test('Registrar 2 habitaciones crea UN cliente, 2 estadías y una cuenta por habitación',()=>{
@@ -305,7 +305,8 @@ test('Buscar Varios filtra por nombre y categoría incluso con acentos',()=>{
  const all=t.filterCheckinProducts('AGUA');
  assert(all.length>0);
  assert(all.some(x=>x.name.toLowerCase().includes('agua')));
- assert(t.filterCheckinProducts('champu').some(x=>/champ/i.test(x.name)));
+ assert(t.filterCheckinProducts('shampu').some(x=>/shamp/i.test(x.name)));
+ assert(t.filterCheckinProducts('aseo').some(x=>x.category==='aseo'));
  assert.equal(t.filterCheckinProducts('producto inexistente sin coincidencias').length,0);
 });
 test('Agregar dos Varios al ingreso deja productos en cuenta y descuenta stock una sola vez',()=>{
