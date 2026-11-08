@@ -1073,6 +1073,7 @@
     navigate('ingreso');
   }
   function processCheckin(){
+  syncCheckinVariosForm();
   const f=readForm('checkin-form'),g=guestData(f),b=reservationOf(ui.prefillBookingId);
   if(!g.firstName||!g.lastName||!validDoc(g.document)||!g.phone){
     toast('Complete nombre, apellido, cédula de 10 dígitos y teléfono.','error');return;
@@ -1083,7 +1084,7 @@
     toast('Complete los cuatro datos de facturación.','error');return;
   }
   if(plan.items.length>1){
-    const msg=`¿Registrar ${plan.items.length} habitaciones al mismo cliente (${g.firstName} ${g.lastName}) por ${money(plan.total)}? Cada habitación tendrá su saldo y su propia salida.`;
+    const msg=`¿Registrar ${plan.items.length} habitaciones al mismo cliente (${g.firstName} ${g.lastName})? Hospedaje: ${money(plan.total)} · Varios: ${money(plan.variosTotal)} · Total: ${money(plan.grandTotal)}. Cada habitación tendrá su saldo y su propia salida.`;
     if(!window.confirm(msg))return;
   }
   const guest=saveGuest(g),checkinAt=new Date().toISOString();
@@ -1111,14 +1112,35 @@
     return s;
   });
   db.stays.push(...stays);
+  // Los consumos quedan ligados a la cuenta de la habitación, no como ventas directas.
+  // La cantidad y el precio se validaron antes de cualquier escritura en estado/stock.
+  const at=checkinAt,shift=f.shift==='noche'?'noche':'dia';
+  for(const line of plan.varios){
+    const index=plan.items.findIndex(item=>item.key===line.roomKey);
+    if(index<0)throw new Error('Habitación destino de Varios no encontrada');
+    const stay=stays[index],product=line.product;
+    db.extras.push({
+      id:uid('extra'),stayId:stay.id,productId:product.id,
+      productName:product.name,category:product.category||'otros',
+      quantity:line.quantity,price:line.price,method:'pendiente',reference:'',
+      shift,operator:'Recepción / ingreso',createdAt:at,cashTendered:0,cashChange:0,
+      changeStatus:'no_aplica',changeDeliveredAt:null,changeDeliveredShift:null
+    });
+    if(product.stock!==null){
+      const before=product.stock;product.stock-=line.quantity;
+      db.stockMoves.push({id:uid('stock'),productId:product.id,productName:product.name,
+        mode:'venta',quantity:line.quantity,previous:before,after:product.stock,shift,
+        operator:'Recepción / ingreso',createdAt:at,note:'Varios cargados durante ingreso a Hab. '+(roomOf(stay.roomId)?.number||'—')});
+    }
+  }
   for(const item of plan.items)item.room.status='ocupada';
   if(b)b.status='alojada';
   persist();
   ui.selectedRoomId=stays[0].roomId;ui.selectedStayId=stays[0].id;
-  ui.checkinDraft=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;
+  ui.checkinDraft=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';
   ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;ui.prefillBookingId=null;
   navigate('habitaciones');
-  toast('Ingreso registrado: '+stays.length+' habitación(es) a nombre de '+guestName(guest)+'. Saldo conjunto '+money(asMoney(stays.reduce((sum,s)=>sum+dueOf(s),0)))+'.');
+  toast('Ingreso registrado: '+stays.length+' habitación(es) y '+plan.varios.length+' consumo(s) a nombre de '+guestName(guest)+'. Saldo conjunto '+money(asMoney(stays.reduce((sum,s)=>sum+dueOf(s),0)))+'.');
 }
   function processReservation(){
     const f=readForm('reservation-form');const name=String(f.name||'').trim(),phone=String(f.phone||'').trim(),n=getNightCount(f.arrival,f.departure),advance=Number(f.advance||0),document=String(f.document||'').trim();
