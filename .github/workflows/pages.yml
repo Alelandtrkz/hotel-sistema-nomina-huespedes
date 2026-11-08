@@ -35,6 +35,7 @@ jobs:
           node tests/multihabitacion.test.cjs
           node tests/rooms-overview.test.cjs
           node tests/room-date-housekeeping.test.cjs
+          node tests/reservas-buscador.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos
