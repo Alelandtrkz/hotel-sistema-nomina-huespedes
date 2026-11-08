@@ -463,3 +463,31 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
  .reservation-guest-input .btn{padding:8px 10px;font-size:12px}
  .reservation-guest-results{max-height:54dvh}
 }
+
+
+/* v0.17 · Crear reserva plegable: la nómina queda visible sin desplazarse */
+.reservation-create-details{margin:0 0 16px;min-width:0}
+.reservation-create-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 23px;min-height:77px;cursor:pointer;list-style:none;user-select:none;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.reservation-create-summary::-webkit-details-marker{display:none}
+.reservation-create-summary::marker{content:''}
+.reservation-create-summary:hover{background:#f7faf8;border-color:#cddfd2}
+.reservation-create-summary:focus-visible{outline:3px solid #8bbfa0;outline-offset:2px}
+.reservation-create-intro{min-width:0;display:flex;flex-direction:column;gap:4px}
+.reservation-create-intro strong{font-size:14px;color:#203a30}
+.reservation-create-intro small{font-size:11px;color:#6a8073;font-weight:400}
+.reservation-create-toggle-label{display:flex;align-items:center;gap:9px;white-space:nowrap;font-size:12px;color:#2a6045;font-weight:700}
+.reservation-create-arrow{display:inline-flex;justify-content:center;align-items:center;width:24px;height:24px;font-size:22px;line-height:1;transition:transform .2s}
+.reservation-create-expanded-text{display:none}
+.reservation-create-details[open] .reservation-create-expanded-text{display:inline}
+.reservation-create-details[open] .reservation-create-collapsed-text{display:none}
+.reservation-create-details[open] .reservation-create-arrow{transform:rotate(180deg)}
+.reservation-create-content{margin-top:12px}
+.reservation-create-content .panel{min-width:0}
+.reservation-roster{margin-top:0}
+@media(max-width:640px){
+ .reservation-create-summary{min-height:70px;padding:14px;gap:8px}
+ .reservation-create-intro strong{font-size:13px}
+ .reservation-create-intro small{font-size:10px;line-height:1.4}
+ .reservation-create-toggle-label{font-size:11px;gap:3px}
+ .reservation-create-arrow{width:19px;font-size:19px}
+}
