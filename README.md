@@ -1,3 +1,36 @@
+# Hotel Unicornio v0.21 — Inventario por código de barras (Nevera y Bodega)
+
+Esta versión permite **contar productos por separado en Nevera y Bodega**, con lectura de código de barras desde celular, sin registrar unidades inventadas ni confundirse entre una venta y una reposición.
+
+## Flujo de conteo nocturno
+
+1. Acceda a **Inventario de productos** desde el menú principal o **Varios → Inventario de productos**.
+2. Pulse **Escanear código de barras**. Autorice la cámara o escriba el EAN/UPC completo.
+3. El artículo asociado queda seleccionado automáticamente. Si no está identificado, vincule primero el código en el catálogo de **Tarifas y ajustes**.
+4. Seleccione **Nevera** o **Bodega**, elija **Conteo físico**, introduzca la cantidad real (puede ser cero) e identifique al encargado.
+5. Pulse **Confirmar y guardar movimiento**. Solo entonces se guarda la cantidad y se sincroniza con Supabase, conservando un movimiento auditable.
+6. Repita con otra ubicación. La cantidad total aparece solo cuando ambas ubicaciones tengan conteos. **Sin conteo no es equivalente a cero**.
+
+Las opciones **Entrada**, **Merma** y **Trasladar** requieren un conteo inicial de la ubicación afectada; el traslado exige que también se haya contado el destino. Un traslado bodega→nevera mueve unidades sin crear ventas ni modificar el total.
+
+## Varios y cargos a habitación
+
+- Las tarjetas de producto muestran **blanco** para disponibilidad normal / sin conteo, **amarillo** para 1–5 unidades en nevera, **rojo** para nevera agotada sin stock disponible en bodega y **verde azulado** para nevera vacía con unidades en bodega que deben reponerse.
+- Si la nevera se contó en cero, **no se permite vender** aunque existan unidades en bodega: primero debe hacerse un traslado. Al vender, se descuentan solo las unidades de nevera.
+- La búsqueda de productos reconoce **también los que tienen precio pendiente**: aparecen en resultados con esa advertencia y no se pueden facturar hasta que recepción configure su precio.
+
+## Primera tanda de 10 fotografías (08-11-2026)
+
+El archivo `catalogo/primera-tanda-fotos-2026-11-08.json` registra **10 presentaciones** sin cantidades ni precios supuestos. Se transcribieron **8 códigos completos válidos** según los dígitos verificadores EAN/UPC. Las fotos 164507 (Coca-Cola 500 ml) y 164514 (Powerade Mora Azul 350 ml) muestran códigos parciales; se incluyen con código vacío para que no se asocie una identificación errónea. Las fotos 164505 y 164506 requieren confirmar marca/presentación con una imagen frontal, y la del agua grande requiere confirmar volumen.
+
+Se identifican las presentaciones de Powerade por **sabor y tamaño**, sin fusionarlas con productos genéricos existentes de precio conocido. Todos los nuevos productos quedan con `price:null`, `stock:null`, `stockNevera:null` y `stockBodega:null`. Debe revisarse su precio antes de vender. Se conservan las 71 fichas anteriores y sus tarifas, sin eliminar ni editar fichas de huéspedes ni movimientos de caja.
+
+**Seguridad:** el código de cámara no envía imagen de video a la base de datos. La cámara es voluntaria y requiere HTTPS; el código se procesa en el navegador. Supabase solo recibe los cambios confirmados por el usuario autenticado. Los movimientos se guardan en el estado central existente, sin cambios a la estructura de tablas.
+
+**Pruebas:** `tests/inventario-escaner-v021.test.cjs` comprueba selección por código, identificación de pendientes, conteos por ubicación, traslados, venta solo desde nevera y que stock desconocido no sea interpretado como cero. Todas las pruebas anteriores se mantienen y Pages no despliega si falla alguna.
+
+---
+
 # Hotel Unicornio v0.20 — Persona adicional sin nombres y fecha en turno automático
 
 En **Cuenta por habitación → Agregar persona adicional** se retira por completo el campo de nombre y apellido de la persona adicional. La operación se registra con **categoría**, **noches a cobrar**, **encargado** y **turno automático**; el cargo sigue utilizando la tarifa configurada para adulto o niño por noche.
