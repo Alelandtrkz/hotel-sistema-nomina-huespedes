@@ -297,4 +297,122 @@ test('Tarifa de descuento nunca puede superar o alterar una tarifa configurada m
  assert.equal(t.checkinGroupEstimate(f).total,null);
  assert(t.prepareCheckinGroup(f).error);
 });
+
+test('Buscar Varios filtra por nombre y categoría incluso con acentos',()=>{
+ const d=setup([]);
+ assert(t.renderCheckin().includes('Buscar producto en Varios'));
+ assert(t.renderCheckin().includes('Varios para este mismo huésped'));
+ const all=t.filterCheckinProducts('AGUA');
+ assert(all.length>0);
+ assert(all.some(x=>x.name.toLowerCase().includes('agua')));
+ assert(t.filterCheckinProducts('champu').some(x=>/champ/i.test(x.name)));
+ assert.equal(t.filterCheckinProducts('producto inexistente sin coincidencias').length,0);
+});
+test('Agregar dos Varios al ingreso deja productos en cuenta y descuenta stock una sola vez',()=>{
+ const d=setup([]);
+ d.products.find(p=>p.id==='producto-002').stock=3;
+ d.products.find(p=>p.id==='producto-003').stock=5;
+ t.setUI({...t.getUI(),checkinVarios:[
+   {key:'checkvar1',productId:'producto-002',quantity:'1',roomKey:'principal'},
+   {key:'checkvar2',productId:'producto-003',quantity:'2',roomKey:'principal'}
+ ]});
+ const form=bookingForm({cashTendered:'24',changeStatus:'dado'});
+ fake['checkin-form']=wrapForm(form);
+ const plan=t.prepareCheckinGroup(form);
+ assert.equal(plan.error,null);
+ assert.equal(plan.total,20);
+ assert.equal(plan.variosTotal,2.5);
+ assert.equal(plan.grandTotal,22.5);
+ assert.equal(plan.tender.change,1.5);
+ t.processCheckin();
+ assert.equal(d.stays.length,1);assert.equal(d.extras.length,2);
+ assert(d.extras.every(x=>x.stayId===d.stays[0].id&&x.method==='pendiente'));
+ assert.equal(d.stays[0].payments[0].amount,22.5);
+ assert.equal(t.dueOf(d.stays[0]),0);
+ assert.equal(d.products.find(p=>p.id==='producto-002').stock,2);
+ assert.equal(d.products.find(p=>p.id==='producto-003').stock,3);
+ assert.equal(d.stockMoves.length,2);
+ assert(t.stayHistoryEvents(d.stays[0]).some(x=>x.title.includes('Agua')));
+});
+test('Varios cargados en ingreso Por cobrar quedan pendientes y NO entran en caja',()=>{
+ const d=setup([]);
+ t.setUI({...t.getUI(),checkinVarios:[{key:'checkvar1',productId:'producto-002',quantity:'3',roomKey:'principal'}]});
+ const form=bookingForm({paymentMethod:'por_cobrar',cashTendered:'999',paymentAmount:'999'});
+ fake['checkin-form']=wrapForm(form);
+ t.processCheckin();
+ assert.equal(d.stays[0].payments.length,0);
+ assert.equal(d.extras.length,1);
+ assert.equal(d.extras[0].quantity,3);
+ assert.equal(t.dueOf(d.stays[0]),21.5);
+ const local=new Date().toISOString().slice(0,10);
+ assert.equal(t.cashTotals(local,'dia').cash,0);
+});
+test('Dos habitaciones con Varios distintos atribuyen cada cargo al cuarto correcto',()=>{
+ const d=setup();
+ t.setUI({...t.getUI(),checkinVarios:[
+ {key:'checkvar1',productId:'producto-002',quantity:'1',roomKey:'principal'},
+ {key:'checkvar2',productId:'producto-003',quantity:'2',roomKey:'batch1'}
+ ]});
+ const form=bookingForm({cashTendered:'54',changeStatus:'pendiente'});
+ fake['checkin-form']=wrapForm(form);
+ const plan=t.prepareCheckinGroup(form);
+ assert.equal(plan.error,null);
+ assert.equal(plan.grandTotal,52.5);
+ assert.equal(plan.items[0].variosTotal,0.5);
+ assert.equal(plan.items[1].variosTotal,2);
+ assert.equal(plan.items[0].payment,20.5);
+ assert.equal(plan.items[1].payment,32);
+ assert.equal(plan.tender.change,1.5);
+ t.processCheckin();
+ assert.equal(d.extras.length,2);
+ assert.equal(d.extras[0].stayId,d.stays[0].id);
+ assert.equal(d.extras[1].stayId,d.stays[1].id);
+ assert.equal(d.stays[0].payments[0].cashChange,1.5);
+ assert.equal(d.stays[1].payments[0].cashChange,0);
+ assert.equal(d.stays[0].payments[0].cashTendered+d.stays[1].payments[0].cashTendered,54);
+ assert.equal(t.dueOf(d.stays[0]),0);assert.equal(t.dueOf(d.stays[1]),0);
+});
+test('Un producto sin precio o con cantidad inválida impide guardar el ingreso completo',()=>{
+ for(const row of [
+   {key:'checkvar1',productId:'producto-002',quantity:'0',roomKey:'principal'},
+   {key:'checkvar1',productId:'producto-002',quantity:'1.5',roomKey:'principal'},
+   {key:'checkvar1',productId:'producto-002',quantity:'1',roomKey:'hab-inexistente'}
+ ]){
+   const d=setup([]);
+   t.setUI({...t.getUI(),checkinVarios:[row]});
+   const form=bookingForm();
+   const plan=t.prepareCheckinGroup(form);
+   assert(plan.error);
+   fake['checkin-form']=wrapForm(form);t.processCheckin();
+   assert.equal(d.stays.length,0);assert.equal(d.extras.length,0);
+ }
+});
+test('Stock compartido entre varios renglones se verifica antes de guardar',()=>{
+ const d=setup([]),product=d.products.find(x=>x.id==='producto-002');
+ product.stock=2;
+ t.setUI({...t.getUI(),checkinVarios:[
+ {key:'checkvar1',productId:product.id,quantity:'2',roomKey:'principal'},
+ {key:'checkvar2',productId:product.id,quantity:'1',roomKey:'principal'}
+ ]});
+ const plan=t.prepareCheckinGroup(bookingForm());
+ assert(plan.error&&/inventario insuficiente/i.test(plan.error));
+ assert.equal(product.stock,2);
+ assert.equal(d.stays.length,0);assert.equal(d.extras.length,0);
+});
+test('Transferencia descontada incluye Varios a precio normal, sin reducir los productos',()=>{
+ const d=setup([]);
+ t.setUI({...t.getUI(),checkinVarios:[{key:'checkvar1',productId:'producto-002',quantity:'2',roomKey:'principal'}]});
+ const form=bookingForm({paymentMethod:'transferencia_descuento',transferCode:'TEST-VARIOS-DESC'});
+ fake['checkin-form']=wrapForm(form);
+ const plan=t.prepareCheckinGroup(form);
+ assert.equal(plan.error,null);assert.equal(plan.total,17);
+ assert.equal(plan.variosTotal,1);assert.equal(plan.grandTotal,18);
+ t.processCheckin();
+ assert.equal(d.stays[0].roomRate,17);
+ assert.equal(d.stays[0].payments[0].method,'transferencia');
+ assert.equal(d.stays[0].payments[0].amount,18);
+ assert.equal(t.dueOf(d.stays[0]),0);
+ assert.equal(d.extras[0].price,0.5);
+});
+
 console.log('Pruebas en memoria con cédulas ficticias; no se escriben datos en Supabase.');
