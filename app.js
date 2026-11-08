@@ -377,7 +377,7 @@
   }
 
   // Escáner iniciado solo a petición del recepcionista; no envía imágenes a Supabase.
-  let roomBarcodeInstance=null,roomBarcodeToken=0,roomBarcodeLoading=null,roomBarcodeDetected=false;
+  let roomBarcodeInstance=null,roomBarcodeToken=0,roomBarcodeLoading=null,roomBarcodeDetected=false,roomBarcodeContext='room';
   function roomBarcodeStatus(message){
     const el=document.getElementById('room-barcode-status');
     if(el)el.textContent=message;
@@ -396,14 +396,15 @@
     stopRoomBarcodeCamera();
     document.getElementById('room-barcode-overlay')?.remove();
   }
-  function openRoomBarcodeScanner(){
-    if(!document.getElementById('room-extra-form'))return;
-    closeRoomBarcodeScanner();
+  function openRoomBarcodeScanner(context='room'){
+    if(context==='stock'&&!document.getElementById('stock-form'))return;
+    if(context!=='stock'&&!document.getElementById('room-extra-form'))return;
+    closeRoomBarcodeScanner();roomBarcodeContext=context;
     const wrapper=document.createElement('div');
     wrapper.id='room-barcode-overlay';
     wrapper.className='room-barcode-overlay';
     wrapper.innerHTML=`<section class="room-barcode-dialog" role="dialog" aria-modal="true" aria-label="Escanear código de barras del producto">
-      <header class="room-barcode-header"><div><strong>Escanear producto</strong><small>Use la cámara del teléfono o escriba el código impreso.</small></div>
+      <header class="room-barcode-header"><div><strong>${roomBarcodeContext==='stock'?'Escanear para conteo':'Escanear producto'}</strong><small>Use la cámara del teléfono o escriba el código impreso.</small></div>
         <button type="button" class="room-barcode-close" data-action="close-room-barcode-scanner" aria-label="Cerrar escáner">×</button></header>
       <div class="room-barcode-body">
         <div id="room-barcode-reader" class="room-barcode-reader" aria-label="Vista de la cámara"></div>
@@ -430,8 +431,18 @@
       roomBarcodeStatus('Código '+code+' no asociado a un producto. Asigne el código en Tarifas y ajustes o use Buscar producto.');
       return false;
     }
+    if(roomBarcodeContext==='stock'){
+      const dropdown=document.getElementById('stock-product'),quantity=document.getElementById('stock-quantity');
+      if(!dropdown){roomBarcodeStatus('No hay formulario de inventario activo.');return false;}
+      dropdown.value=product.id;
+      closeRoomBarcodeScanner();
+      updateStockPreview();
+      quantity?.focus?.();
+      toast('Código reconocido: '+product.name+'. Escriba cuántas unidades hay físicamente en la ubicación escogida.');
+      return true;
+    }
     if(product.price===null||Number(product.price)<=0){
-      roomBarcodeStatus('El producto '+product.name+' no tiene un precio establecido. Configure su precio primero.');
+      roomBarcodeStatus('Código reconocido: '+product.name+'. Falta fijar su precio de venta en Tarifas y ajustes.');
       return false;
     }
     if(!selectRoomExtraProduct(product.id)){roomBarcodeStatus('No fue posible elegir este producto.');return false;}
@@ -2161,7 +2172,8 @@
       case 'go-varios':navigate('varios');break;
       case 'go-caja':navigate('caja');break;
       case 'export-cash':exportCash();break;
-      case 'open-room-barcode-scanner':openRoomBarcodeScanner();break;
+      case 'open-room-barcode-scanner':openRoomBarcodeScanner('room');break;
+      case 'open-stock-barcode-scanner':openRoomBarcodeScanner('stock');break;
       case 'close-room-barcode-scanner':closeRoomBarcodeScanner();break;
       case 'start-room-barcode-camera':startRoomBarcodeCamera();break;
       case 'stop-room-barcode-camera':roomBarcodeToken++;stopRoomBarcodeCamera();roomBarcodeStatus('Cámara detenida. Puede ingresar el código manualmente.');break;
@@ -2336,6 +2348,7 @@
     const el=e.target;
     if(el.id==='filter-product-category'){ui.productCategory=el.value;render();return;}
     if(el.id==='filter-stock-category'){ui.stockCategory=el.value;render();return;}
+    if(['stock-product','stock-location','stock-mode'].includes(el.id)){updateStockPreview();return;}
     if(el.id==='cash-date'||el.id==='cash-shift'){ui.cashDraft=readForm('cash-close-form');if(el.id==='cash-date')ui.cashDate=el.value;else ui.cashShift=el.value;render();return;}
     if(el.id==='room-plan-date'){
       if(!roomDateValid(el.value)){
