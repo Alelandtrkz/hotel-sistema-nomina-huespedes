@@ -430,3 +430,36 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
 @media(max-width:355px){
  .room-filter-actions>.btn{font-size:10px;padding:6px 5px}
 }
+
+
+/* v0.16 · Buscador flotante de huéspedes en Reservas */
+.reservation-guest-input{display:flex;gap:8px;align-items:stretch}
+.reservation-guest-input input{min-width:0;flex:1}
+.reservation-guest-input .btn{min-height:43px;flex:0 0 auto;padding:8px 13px}
+.reservation-guest-hint{font-size:10px;color:#74877a;display:block;margin-top:5px}
+.reservation-guest-overlay{position:fixed;inset:0;z-index:130;background:rgba(13,32,24,.61);display:flex;align-items:center;justify-content:center;padding:16px}
+.reservation-guest-dialog{width:min(100%,570px);max-height:min(85dvh,760px);background:#fff;border-radius:15px;box-shadow:0 20px 90px rgba(0,0,0,.24);display:flex;flex-direction:column;overflow:hidden}
+.reservation-guest-header{padding:19px 22px;display:flex;gap:15px;align-items:flex-start;justify-content:space-between;border-bottom:1px solid #e1eae4}
+.reservation-guest-header h2{font-size:18px;margin:0;color:#244d38}
+.reservation-guest-header p{font-size:12px;color:#667c6c;margin:4px 0 0}
+.reservation-guest-close{border:0;background:#f2f5f2;color:#405c48;border-radius:8px;font-size:24px;line-height:1;width:36px;height:36px;flex-shrink:0}
+.reservation-guest-close:hover{background:#e4ede6}
+.reservation-guest-body{padding:18px 22px 21px;min-height:0;display:flex;flex-direction:column}
+.reservation-guest-body>label{font-size:12px;font-weight:750;color:#2e5341;margin-bottom:7px}
+.reservation-guest-body>input{width:100%;min-height:45px;border:1px solid #cdddcf;border-radius:9px;padding:10px 12px;background:#fff}
+.reservation-guest-body>input:focus{outline:3px solid #b5d8c2;outline-offset:1px}
+.reservation-guest-results{min-height:72px;max-height:370px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.reservation-guest-results>.mini-caption{padding:14px 4px;line-height:1.6}
+.reservation-guest-result{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:4px;width:100%;padding:11px 13px;border:1px solid #deebe1;background:#fbfdfb;border-radius:9px}
+.reservation-guest-result:hover,.reservation-guest-result:focus-visible{background:#eaf5ed;border-color:#78b58c;outline:0}
+.reservation-guest-result strong{font-size:12px;color:#234c35;overflow-wrap:anywhere}
+.reservation-guest-result span{font-size:11px;color:#61796b;overflow-wrap:anywhere}
+.reservation-guest-help{border-top:1px solid #e2eae4;padding-top:13px;margin:12px 0 0;font-size:11px;color:#677a6d;line-height:1.55}
+@media(max-width:640px){
+ .reservation-guest-overlay{padding:10px;align-items:center}
+ .reservation-guest-dialog{max-height:92dvh}
+ .reservation-guest-header{padding:15px}
+ .reservation-guest-body{padding:15px}
+ .reservation-guest-input .btn{padding:8px 10px;font-size:12px}
+ .reservation-guest-results{max-height:54dvh}
+}
