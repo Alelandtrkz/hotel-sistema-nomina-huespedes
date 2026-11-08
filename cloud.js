@@ -246,7 +246,7 @@
       }
       if(!uiLoaded) {
         uiLoaded=true;
-        var script=document.createElement("script");script.src="./app.js?v=0.15-fechas-camareria";
+        var script=document.createElement("script");script.src="./app.js?v=0.16-buscador-reservas";
         script.onerror=function(){status("No se pudo cargar la aplicación",true);};
         document.body.appendChild(script);
       }
