@@ -127,7 +127,26 @@
   const localDateOf=iso=>{if(!iso)return '';const d=new Date(iso);return Number.isNaN(d.valueOf())?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
   const sortProduct=(a,b)=>String(a.category).localeCompare(String(b.category))||a.name.localeCompare(b.name,'es');
   const guestName=g=>[g?.firstName,g?.secondName,g?.lastName,g?.secondLastName].filter(Boolean).join(' ').trim();
-  const getGuestByDocument=doc=>db.guests.find(x=>x.document===String(doc||'').trim());
+  function checkEcuadorDocument(value){
+  const input=String(value??'').trim();
+  if(!/^\d{10}(?:001)?$/.test(input))return {valid:false,error:'Ingrese 10 dígitos de cédula o 13 dígitos de RUC de persona natural terminado en 001.'};
+  const cedula=input.slice(0,10),province=Number(cedula.slice(0,2)),third=Number(cedula[2]);
+  if(!((province>=1&&province<=24&&third<=5)||(province===30&&(third===4||third===5))))
+    return {valid:false,error:'La provincia o el tercer dígito no corresponde a una cédula ecuatoriana válida.'};
+  const weights=[2,1,2,1,2,1,2,1,2];
+  const sum=weights.reduce((n,w,i)=>{const product=Number(cedula[i])*w;return n+(product>9?product-9:product);},0);
+  const verifier=(10-(sum%10))%10;
+  if(verifier!==Number(cedula[9]))return {valid:false,error:'El dígito verificador de la cédula no es válido. Compruebe el número ingresado.'};
+  return {valid:true,canonical:cedula,kind:input.length===13?'ruc_persona_natural':'cedula',document:input};
+}
+  const getGuestByDocument=doc=>{
+    const searched=checkEcuadorDocument(doc);
+    if(!searched.valid)return db.guests.find(x=>String(x.document||'').trim()===String(doc||'').trim());
+    return db.guests.find(x=>{
+      const existing=checkEcuadorDocument(x.document);
+      return existing.valid&&existing.canonical===searched.canonical;
+    });
+  };
   const roomOf=id=>db.rooms.find(x=>x.id===id);
   const stayOf=id=>db.stays.find(x=>x.id===id);
   const reservationOf=id=>db.reservations.find(x=>x.id===id);
@@ -248,7 +267,7 @@
     document.getElementById(prefix+'-change-choice')?.classList.toggle('hidden',!show||change<=0);
   }
   const readForm=id=>{const e=document.getElementById(id);return e?Object.fromEntries(new FormData(e).entries()):{};};
-  const validDoc=s=>/^\d{10}$/.test(String(s||'').trim()); // Solo formato, NO verifica titularidad ni acceso al Registro Civil.
+  const validDoc=s=>checkEcuadorDocument(s).valid; // Validación estructural y de dígito verificador, no prueba identidad real.
   function persist(){
     if(window.hotelCloud?.ready){
       window.hotelCloud.save(db).catch(()=>toast('No se pudo iniciar la sincronización.','error'));
@@ -286,8 +305,8 @@
   const noRows=(message='Todavía no hay registros.')=>`<div class="empty"><div class="empty-icon">▧</div>${esc(message)}</div>`;
   const field=(title,name,value='',opts={})=>`<div class="field ${opts.full?'full':''}"><label for="${esc(opts.id||name)}">${esc(title)}${opts.required?' *':''}</label>${opts.textarea?`<textarea id="${esc(opts.id||name)}" name="${esc(name)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''}>${esc(value)}</textarea>`:`<input id="${esc(opts.id||name)}" name="${esc(name)}" type="${esc(opts.type||'text')}" value="${esc(value)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''} ${opts.min!==undefined?`min="${opts.min}"`:''} ${opts.max!==undefined?`max="${opts.max}"`:''} ${opts.step!==undefined?`step="${opts.step}"`:''} ${opts.maxlength?`maxlength="${opts.maxlength}"`:''} ${opts.readonly?'readonly':''} autocomplete="off">`}${opts.hint?`<div class="field-hint">${esc(opts.hint)}</div>`:''}</div>`;
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
-  const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula ecuatoriana','document',g.document,{required:true,placeholder:'10 dígitos',maxlength:10})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
-  const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por número de cédula</label><input id="lookup-${scope}" inputmode="numeric" maxlength="10" placeholder="Ingrese 10 dígitos" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
+  const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula o RUC personal','document',g.document,{required:true,placeholder:'10 dígitos o 13 terminados en 001',maxlength:13})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
+  const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por cédula o RUC de persona natural</label><input id="lookup-${scope}" inputmode="numeric" maxlength="13" placeholder="10 dígitos o 13 terminados en 001" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
   let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'por_cobrar',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
@@ -797,7 +816,7 @@
     return head('Recepción / planificación','Reservas y próximas llegadas','Agende estancias, registre anticipos y convierta reservas en ingresos.',btn('Exportar nómina CSV','export-roster','btn-secondary'))+
       `<div class="two-col"><section class="panel"><div class="panel-head"><div><h2>Crear reserva</h2><p>Se solicita un anticipo del 50% para confirmar.</p></div></div><div class="panel-body"><form id="reservation-form"><div class="form-grid cols-2">
         ${field('Nombre completo','name',d.name,{required:true,placeholder:'Nombre del titular de la reserva'})}${field('Teléfono / WhatsApp','phone',d.phone,{required:true,placeholder:'09XXXXXXXX'})}
-        ${field('Cédula (opcional)','document',d.document,{maxlength:10,placeholder:'10 dígitos'})}${field('Fecha de llegada','arrival',d.arrival,{type:'date',required:true})}
+        ${field('Cédula o RUC personal (opcional)','document',d.document,{maxlength:13,placeholder:'10 dígitos o 13 terminados en 001'})}${field('Fecha de llegada','arrival',d.arrival,{type:'date',required:true})}
         ${field('Fecha de salida','departure',d.departure,{type:'date',required:true})}
         ${select('Tipo de habitación','type',TYPES.map(x=>[x,LABELS[x]]),d.type)}
         ${select('Desayuno','breakfast',[['sin','Sin desayuno'],['con','Con desayuno']],d.breakfast)}
@@ -1042,12 +1061,16 @@
   function guestData(f){return {firstName:String(f.firstName||'').trim(),secondName:String(f.secondName||'').trim(),lastName:String(f.lastName||'').trim(),secondLastName:String(f.secondLastName||'').trim(),document:String(f.document||'').trim(),phone:String(f.phone||'').trim(),email:String(f.email||'').trim()};}
   function saveGuest(g){
     const found=getGuestByDocument(g.document);
-    if(found){Object.assign(found,g);return found;}
+    if(found){Object.assign(found,{...g,document:found.document});return found;} // No cambia el formato histórico ni duplica cédula/RUC.
     const newGuest={...g,id:uid('guest'),createdAt:new Date().toISOString()};db.guests.push(newGuest);return newGuest;
   }
   function lookupGuest(scope){
     const doc=document.getElementById('lookup-'+scope)?.value.trim()||'';
-    if(!validDoc(doc)){toast('La búsqueda requiere una cédula de 10 dígitos.','error');return;}
+    const verified=checkEcuadorDocument(doc);
+    if(!verified.valid){
+      ui.lookup[scope]=doc;ui.lookupMessage[scope]=verified.error;ui.lookupResult[scope]=false;
+      toast(verified.error,'error');render();return;
+    }
     const found=getGuestByDocument(doc);
     ui.lookup[scope]=doc;ui.lookupResult[scope]=Boolean(found);
     ui.lookupMessage[scope]=found?'Huésped encontrado: '+guestName(found)+'. Datos cargados.':'Usuario no registrado. Complete los datos para crear su ficha.';
@@ -1076,9 +1099,11 @@
   function processCheckin(){
   syncCheckinVariosForm();
   const f=readForm('checkin-form'),g=guestData(f),b=reservationOf(ui.prefillBookingId);
-  if(!g.firstName||!g.lastName||!validDoc(g.document)||!g.phone){
-    toast('Complete nombre, apellido, cédula de 10 dígitos y teléfono.','error');return;
+  if(!g.firstName||!g.lastName||!g.phone){
+    toast('Complete nombre, apellido y teléfono.','error');return;
   }
+  const checked=checkEcuadorDocument(g.document);
+  if(!checked.valid){toast(checked.error,'error');return;}
   const plan=prepareCheckinGroup(f,b);
   if(plan.error){toast(plan.error,'error');refreshRoomSelect('ingreso');return;}
   if(f.invoice==='si'&&(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim())){
@@ -1146,7 +1171,7 @@
   function processReservation(){
     const f=readForm('reservation-form');const name=String(f.name||'').trim(),phone=String(f.phone||'').trim(),n=getNightCount(f.arrival,f.departure),advance=Number(f.advance||0),document=String(f.document||'').trim();
     if(!name||!phone||n<1){toast('Ingrese titular, teléfono y fechas válidas.','error');return;}
-    if(document&&!validDoc(document)){toast('Si registra una cédula, debe contener 10 dígitos.','error');return;}
+    if(document&&!validDoc(document)){toast(checkEcuadorDocument(document).error,'error');return;}
     if(f.roomId&&(!roomOf(f.roomId)||!roomCompatible(roomOf(f.roomId),f.type)||!availableForBooking(roomOf(f.roomId),f.arrival,f.departure))){toast('La habitación escogida no está libre durante esas fechas.','error');refreshRoomSelect('reservas');return;}
     if(rate(f.type,f.breakfast)===null){toast('Configure la tarifa con desayuno antes de reservar ese tipo.','error');return;}
     const total=asMoney(n*rate(f.type,f.breakfast));
@@ -1159,7 +1184,9 @@
   }
   function processGuest(){
     const g=guestData(readForm('guest-form'));
-    if(!g.firstName||!g.lastName||!validDoc(g.document)||!g.phone){toast('Complete nombre, apellido, cédula de 10 dígitos y teléfono.','error');return;}
+    if(!g.firstName||!g.lastName||!g.phone){toast('Complete nombre, apellido y teléfono.','error');return;}
+    const checked=checkEcuadorDocument(g.document);
+    if(!checked.valid){toast(checked.error,'error');return;}
     const found=Boolean(getGuestByDocument(g.document));saveGuest(g);persist();ui.lookup.huespedes=g.document;ui.lookupMessage.huespedes=found?'Datos del huésped actualizados.':'Nuevo huésped registrado.';ui.lookupResult.huespedes=true;render();toast(found?'Ficha del huésped actualizada. Sincronizando...':'Huésped añadido. Sincronizando con Supabase...');
   }
   function processPayment(){
