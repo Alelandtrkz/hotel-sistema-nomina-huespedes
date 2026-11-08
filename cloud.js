@@ -246,7 +246,7 @@
       }
       if(!uiLoaded) {
         uiLoaded=true;
-        var script=document.createElement("script");script.src="./app.js?v=0.9-varios-ingreso";
+        var script=document.createElement("script");script.src="./app.js?v=0.10-pago-id";
         script.onerror=function(){status("No se pudo cargar la aplicación",true);};
         document.body.appendChild(script);
       }
