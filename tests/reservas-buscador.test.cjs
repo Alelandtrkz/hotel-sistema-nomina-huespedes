@@ -92,4 +92,42 @@ test('El resultado puede seleccionarse mediante la acción delegada',()=>{
  listeners.click({target});
  assert.equal(t.getUI().reservationDraft.name,'María Torres');
 });
+
+test('Crear reserva aparece cerrado por defecto y la nómina queda fuera de la sección plegable',()=>{
+ setup();const html=t.renderReservations();
+ const details=html.indexOf('<details class="reservation-create-details"');
+ const summary=html.indexOf('<summary class="reservation-create-summary">');
+ const form=html.indexOf('id="reservation-form"');
+ const close=html.indexOf('</details>',form);
+ const roster=html.indexOf('<h2>Nómina de reservas</h2>');
+ assert(details>=0&&summary>details&&form>summary&&close>form&&roster>close);
+ assert(!html.slice(details,summary).includes(' open'));
+ assert(html.includes('Mostrar formulario'));assert(html.includes('Ocultar formulario'));
+ assert(html.includes('id="reservation-search-button"'));
+ assert(html.includes('Condiciones de reserva'));
+});
+test('El estado abierto se conserva tras re-render y al buscar un huésped',()=>{
+ setup();listeners.toggle({target:{id:'reservation-create-details',open:true}});
+ assert.equal(t.getUI().reservationCreateOpen,true);
+ let html=t.renderReservations();
+ assert.match(html,/<details class="reservation-create-details" id="reservation-create-details" open>/);
+ t.openReservationGuestSearch();t.selectReservationGuest('g-1');
+ assert.equal(t.getUI().reservationCreateOpen,true);
+ assert.equal(t.getUI().reservationDraft.name,'José Manuel Pérez Lozano');
+ html=t.renderReservations();
+ assert(html.includes('id="reservation-create-details" open'));
+});
+test('Plegar no modifica los datos de la reserva y permite reabrir',()=>{
+ const db=setup();
+ listeners.toggle({target:{id:'reservation-create-details',open:true}});
+ t.setUI({...t.getUI(),reservationDraft:{...t.getUI().reservationDraft,name:'Titular de prueba',advance:'17'}});
+ listeners.toggle({target:{id:'reservation-create-details',open:false}});
+ assert.equal(t.getUI().reservationCreateOpen,false);
+ assert.equal(t.getUI().reservationDraft.name,'Titular de prueba');
+ assert.equal(t.getUI().reservationDraft.advance,'17');
+ assert.equal(db.reservations.length,0);
+ listeners.toggle({target:{id:'reservation-create-details',open:true}});
+ assert(t.renderReservations().includes('value="Titular de prueba"'));
+});
+
 if(failures)process.exitCode=1;

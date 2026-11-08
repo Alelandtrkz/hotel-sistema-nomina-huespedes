@@ -1,3 +1,15 @@
+# Hotel Unicornio v0.17 — Crear reserva plegable
+
+En **Reservas y próximas llegadas**, el formulario **Crear reserva** se presenta contraído inicialmente para mostrar la **Nómina de reservas** mucho más arriba y reducir el desplazamiento vertical de recepción. La barra «Crear reserva» es totalmente pulsable y accesible con el teclado; el texto alterna entre **Mostrar formulario** y **Ocultar formulario**.
+
+- Al desplegar se muestran el formulario de reserva, el botón de búsqueda de huéspedes y el panel de condiciones, igual que en v0.16.
+- Plegar y desplegar no elimina ni guarda por sí solo los datos del formulario; se conserva el borrador si el componente vuelve a dibujarse.
+- La sección recuerda el estado plegado/abierto durante la navegación de la sesión; tras **Guardar reserva** vuelve a plegarse y deja la nómina a la vista.
+- La nómina, los botones Ingresar/Cancelar, los importes, las tarifas y la conexión a Supabase permanecen intactos. No hay migración ni modificación de datos existentes.
+- Pruebas sintéticas adicionales dentro de `tests/reservas-buscador.test.cjs`: estado inicial plegado, estructura del formulario, eventos del desplegable y preservación del borrador durante la búsqueda.
+
+---
+
 # Hotel Unicornio v0.16 — Buscar huéspedes al crear reservas
 
 En **Reservas → Crear reserva**, el campo **Cédula o RUC personal (opcional)** incluye un botón **Buscar**. Se abre una ventana flotante que permite buscar por cédula/RUC, nombre completo o teléfono. Tras escribir dos caracteres o más, seleccione un huésped para completar **nombre, teléfono y documento** en el formulario; las fechas, habitación, desayuno y anticipos permanecen intactos.
