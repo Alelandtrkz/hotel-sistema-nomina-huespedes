@@ -13,6 +13,7 @@
     flex_aire:'Individual / matrimonial A/C',flex_ventilador:'Individual / matrimonial ventilador',
     doble:'Doble A/C',triple:'Triple A/C',arrendada:'Arrendada'
   };
+  const BREAKFAST_EXTRA_PRICE=5;
   const CATEGORIES = {bebidas:'Bebidas',confiteria:'Confitería',aseo:'Aseo personal',helados:'Helados',otros:'Otros / servicios'};
   const VIEWS = {inicio:'Panel general',habitaciones:'Habitaciones',ingreso:'Registro / ingreso',reservas:'Reservas',salidas:'Salidas y cobros',varios:'Varios / consumos',inventario:'Inventario de varios',caja:'Cierre de caja',huespedes:'Huéspedes',configuracion:'Tarifas y ajustes'};
   const DEFAULT_RATES = {
@@ -370,6 +371,23 @@
       <div class="mini-caption">Los productos sin precio definido se registran desde el catálogo completo de Varios.</div>
     </form></div></details>`;
 }
+
+  function renderBreakfastSection(stay){
+    return `<details class="phase2-operation" id="phase2-breakfast"><summary><span>Agregar desayunos</span><small>${money(BREAKFAST_EXTRA_PRICE)} por unidad · cantidad a elección</small></summary>
+      <div class="phase2-operation-body"><form id="room-breakfast-form">
+        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        <div class="form-grid cols-2">
+          ${field('Cantidad de desayunos','quantity','1',{id:'room-breakfast-quantity',type:'number',min:1,max:100,step:1,required:true})}
+          ${select('Turno','shift',shiftOptions,'dia','','room-breakfast-shift')}
+          ${field('Encargado','operator','',{id:'room-breakfast-operator',placeholder:'Recepción'})}
+        </div>
+        <div class="phase2-preview" id="room-breakfast-preview">1 desayuno × ${money(BREAKFAST_EXTRA_PRICE)} = ${money(BREAKFAST_EXTRA_PRICE)}</div>
+        ${stay.breakfast==='con'?'<p class="mini-caption">La tarifa de esta estadía ya incluye desayuno. Añada solo desayunos adicionales solicitados.</p>':''}
+        <button type="submit" class="btn btn-primary section-gap">Agregar desayunos a la cuenta</button>
+        <p class="mini-caption">Se registra un cargo pendiente; no ingresa dinero en caja hasta cobrarlo.</p>
+      </form></div></details>`;
+  }
+
   function renderAdditionalPersonSection(stay){
   const adult=Number(db.config.extraPersonRate??10),child=Number(db.config.childRate??5),maxNights=Math.max(1,getNightCount(stay.arrival,stay.departure));
   return `<details class="phase2-operation" id="phase2-people"><summary><span>Agregar persona adicional</span><small>Adultos ${money(adult)} · niños ${money(child)} por persona y noche aplicada</small></summary>
@@ -387,23 +405,34 @@
       <p class="mini-caption section-gap">Se registra una persona por operación. Este cargo no constituye un registro oficial de identidad; confirme la tarifa antes de guardar.</p>
     </form></div></details>`;
 }
+
+  function extensionQuote(stay,nights){
+    const n=Number(nights),max=365-getNightCount(stay.arrival,stay.departure);
+    if(!Number.isSafeInteger(n)||n<1||n>90||n>max)return {error:'Seleccione entre 1 y 90 noches, sin superar 365 noches totales.'};
+    const newDeparture=addIsoDays(stay.departure,n);
+    if(!newDeparture)return {error:'No fue posible calcular la fecha de salida.'};
+    const blocker=extensionBlocker(stay,newDeparture);
+    if(blocker)return {error:blocker,newDeparture};
+    const cents=moneyCents(stay.roomRate);
+    if(!Number.isSafeInteger(cents)||cents<=0||cents>1000000)return {error:'La tarifa histórica de la habitación no es válida.'};
+    return {nights:n,newDeparture,total:asMoney(n*cents/100)};
+  }
   function renderExtendStaySection(stay){
-  const next=addIsoDays(stay.departure,1),blocker=extensionBlocker(stay,next);
-  return `<details class="phase2-operation" id="phase2-extension"><summary><span>Extender un día de estadía</span><small>Nueva salida: ${datePretty(next)} · ${money(stay.roomRate)} adicionales</small></summary>
-    <div class="phase2-operation-body">
-      <div class="phase2-preview"><strong>Salida actual:</strong> ${datePretty(stay.departure)}<br><strong>Nueva salida:</strong> ${datePretty(next)}<br><strong>Importe:</strong> ${money(stay.roomRate)} (tarifa guardada en esta estadía).</div>
-      ${blocker?`<div class="phase2-warning">${esc(blocker)}</div>`:''}
-      <form id="room-extension-form">
+    const quote=extensionQuote(stay,1);
+    return `<details class="phase2-operation" id="phase2-extension"><summary><span>Extender estadía</span><small>1 o varias noches · ${money(stay.roomRate)} por noche</small></summary>
+      <div class="phase2-operation-body"><form id="room-extension-form">
         <input type="hidden" name="stayId" value="${esc(stay.id)}">
         <div class="form-grid cols-2">
+          ${field('Noches adicionales','nights','1',{id:'room-extension-nights',type:'number',min:1,max:90,step:1,required:true})}
           ${select('Turno','shift',shiftOptions,'dia','','room-extension-shift')}
           ${field('Encargado','operator','',{id:'room-extension-operator',placeholder:'Recepción'})}
         </div>
-        <button class="btn btn-primary section-gap" type="submit" ${blocker?'disabled':''}>Confirmar una noche adicional</button>
-      </form>
-      <p class="mini-caption">Se revisa si existe una reserva asignada para la noche nueva. No se modifica ninguna reserva anterior.</p>
-    </div></details>`;
-}
+        <div class="phase2-preview" id="room-extension-preview">Salida actual: ${datePretty(stay.departure)} · Nueva salida: ${quote.newDeparture?datePretty(quote.newDeparture):'Revisar'} · Cargo: ${money(quote.total||0)}</div>
+        <div id="room-extension-error" class="phase2-warning ${quote.error?'':'hidden'}">${esc(quote.error||'')}</div>
+        <button id="room-extension-submit" class="btn btn-primary section-gap" type="submit" ${quote.error?'disabled':''}>Confirmar extensión</button>
+        <p class="mini-caption">Se comprueban todas las noches nuevas frente a reservas y estadías; las reservas previas no se modifican.</p>
+      </form></div></details>`;
+  }
   function renderFinalAccountSection(stay){
   const due=dueOf(stay),pending=pendingChangeOf(stay);
   return `<details class="phase2-operation phase2-final" id="phase2-final"><summary><span>Cierre de cuenta final y salida</span><small>${due>0?'Saldo por cobrar '+money(due):'Sin saldo de hospedaje'} · pasar habitación a limpieza</small></summary>
@@ -526,6 +555,7 @@
     </div>
     <div class="phase2-operation-list">
       ${renderRoomExtraSection(stay)}
+      ${renderBreakfastSection(stay)}
       ${renderAdditionalPersonSection(stay)}
       ${renderExtendStaySection(stay)}
       ${renderFinalAccountSection(stay)}
