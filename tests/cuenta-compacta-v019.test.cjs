@@ -65,13 +65,17 @@ check('Desayuno compacto incluye botones Lucide y ya no selector manual del turn
  assert(!html.includes('id="room-breakfast-shift"'));
  assert(!html.includes('Cantidad de desayunos *'));
 });
-check('Persona adicional compacta sin etiqueta visible de nombre, pero con accesibilidad',()=>{
+check('Persona adicional sin campo de nombre y con responsable y turno fechados',()=>{
  const {stay}=makeStay(),html=api.renderAdditionalPersonSection(stay);
- assert(html.includes('placeholder="Nombre y apellido de la persona adicional"'));
- assert(html.includes('aria-label="Nombre de la persona adicional"'));
- assert(!html.includes('<label for="room-person-name">'));
+ assert(!html.includes('name="name"'));
+ assert(!html.includes('room-person-name'));
+ assert(!html.includes('Nombre y apellido de la persona adicional'));
+ assert(html.includes('class="compact-person-fields"'));
+ assert(html.includes('id="room-person-operator"'));
  assert(html.includes('data-target="room-person-nights"'));
  assert(html.includes('Turno automático'));
+ assert(html.includes('datetime="2026-11-08"'));
+ assert(html.includes('07:30–19:30'));
  assert(!html.includes('id="room-person-shift"'));
 });
 check('Extensión recupera la tarjeta de fechas sobre el control de noches',()=>{
