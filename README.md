@@ -1,3 +1,19 @@
+# Hotel Unicornio v0.22 — Segunda tanda de 10 fotografías
+
+**Fecha de registro:** 8 de noviembre de 2026.
+
+El archivo `catalogo/segunda-tanda-fotos-2026-11-08.json` contiene **10 nuevas presentaciones** con EAN-13 leídos de las fotos `164517.jpg` a `164528.jpg` (10 archivos; no hay fotos 164520 ni 164523).
+
+Los diez EAN-13 fueron comprobados mediante su dígito verificador y contrastados con fichas comerciales de Ecuador; cada producto conserva el URL que fundamenta la presentación (tamaño y sabor). Se registran Imperial Limonada 550 ml, Imperial Toronja 550 ml, Saviloé Uva 320 ml, Gatorade Manzana sin azúcar 500 ml, Forestea Horchata 400 ml, Vive 100 Mango 475 ml, Sprite 300 ml, Coca-Cola Original 300 ml, Gatorade Tropical 1 litro y Gatorade Manzana 1 litro.
+
+Se **mantienen sin asignar** los cuatro campos de precio y cantidad `price`, `stock`, `stockNevera` y `stockBodega`: su valor es `null`, no cero. **No copiar precios de venta de tiendas ajenas al Hotel Unicornio.** No se modifican los 71 productos preexistentes, las diez fichas de la primera tanda, huéspedes, reservas ni cargos de caja.
+
+El lector de la versión v0.21 reconoce los nuevos códigos desde **Inventario → Escanear código**, así como en la búsqueda/escáner de Varios, pero el sistema bloquea su venta mientras no se establezca su precio. Para activar las alertas de disponibilidad, registrar por separado el conteo físico de Nevera y Bodega.
+
+La nueva prueba `tests/catalogo-tanda2-v022.test.cjs` verifica 10 códigos nuevos, ausencia de duplicados entre las 20 fotos y ausencia de valores inventados. Se ejecuta en Actions y como requisito previo al despliegue en Pages.
+
+---
+
 # Hotel Unicornio v0.21 — Inventario por código de barras (Nevera y Bodega)
 
 Esta versión permite **contar productos por separado en Nevera y Bodega**, con lectura de código de barras desde celular, sin registrar unidades inventadas ni confundirse entre una venta y una reposición.
