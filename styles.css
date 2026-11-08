@@ -267,3 +267,28 @@
 .checkin-confirm-label span{display:block;flex:1}
 .checkin-credit-authorization .checkin-confirm-label{border-top:1px solid #f0d5af;padding-top:12px;margin-top:12px}
 @media(max-width:640px){.checkin-verification,.checkin-credit-authorization{padding:13px}.checkin-confirm-label{font-size:12.5px}}
+
+/* v0.11 · Varios compactos y plegables en el registro de ingreso */
+details.checkin-varios{padding:0;overflow:hidden}
+.checkin-varios-toggle{display:flex;align-items:center;gap:14px;cursor:pointer;list-style:none;user-select:none;padding:15px 17px;min-height:76px}
+.checkin-varios-toggle::-webkit-details-marker{display:none}
+.checkin-varios-toggle::marker{content:''}
+.checkin-varios-toggle:hover{background:#eef6f1}
+.checkin-varios-toggle:focus-visible{outline:3px solid #7cb899;outline-offset:-3px;border-radius:10px}
+.checkin-varios-toggle-title{flex:1;display:flex;flex-direction:column;gap:5px;min-width:0}
+.checkin-varios-toggle-title strong{font-size:14px;font-weight:750;color:#254e39}
+.checkin-varios-toggle-title small,.checkin-varios-toggle-price small{font-size:11px;font-weight:500;color:#698072}
+.checkin-varios-toggle-price{display:flex;flex-direction:column;align-items:flex-end;gap:4px;white-space:nowrap}
+.checkin-varios-toggle-price strong{font-size:16px;color:#275a3e;font-weight:800}
+.checkin-varios-arrow{font-size:22px;color:#456b56;line-height:1;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;transition:transform .18s ease}
+details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
+.checkin-varios-content{padding:0 17px 16px;border-top:1px solid #dfebe3}
+.checkin-varios-intro{font-size:12px;color:#647a6b;line-height:1.6;margin:12px 0 0}
+@media(max-width:600px){
+ .checkin-varios-toggle{padding:13px 12px;gap:8px;min-height:68px}
+ .checkin-varios-toggle-title strong{font-size:12.5px}
+ .checkin-varios-toggle-title small,.checkin-varios-toggle-price small{font-size:10px}
+ .checkin-varios-toggle-price strong{font-size:14px}
+ .checkin-varios-arrow{font-size:18px;width:19px}
+ .checkin-varios-content{padding:0 12px 13px}
+}

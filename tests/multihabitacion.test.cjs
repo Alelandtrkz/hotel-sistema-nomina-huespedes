@@ -38,7 +38,7 @@ function wrapForm(data){return {data,elements:{namedItem(){return null;}}};}
 function setup(extraRooms=[{key:'batch1'}]){
  const db=t.defaults();
  t.setDB(db);
- t.setUI({...t.getUI(),checkinExtraRooms:extraRooms,checkinRowSeq:extraRooms.length,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',selectedRoomId:null,prefillBookingId:null,
+ t.setUI({...t.getUI(),checkinExtraRooms:extraRooms,checkinRowSeq:extraRooms.length,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,selectedRoomId:null,prefillBookingId:null,
    checkinDraft:bookingForm(),view:'ingreso'});
  fake['checkin-form']=wrapForm(bookingForm() );
  return db;
@@ -527,6 +527,50 @@ test('Los pagos correctos dejan verificación registrada y no requieren autoriza
  assert(db.stays[0].paymentVerifiedAt);
  assert.equal(db.stays[0].creditApproval,null);
  assert.equal(t.dueOf(db.stays[0]),0);
+});
+
+
+test('La sección Varios inicia cerrada con nombre, contador y total visible',()=>{
+  setup([]);
+  const html=t.renderCheckin();
+  assert(html.includes('<details id="checkin-varios-panel"'));
+  assert(!html.includes('id="checkin-varios-panel" class="group-rooms checkin-varios" aria-label="Varios para este huésped" open'));
+  const summary=html.slice(html.indexOf('<summary class="checkin-varios-toggle">'),html.indexOf('</summary>'));
+  assert(summary.includes('Varios para este mismo huésped'));
+  assert(summary.includes('0 producto(s) seleccionados'));
+  assert(summary.includes('Total de Varios'));
+  assert(summary.includes('$0,00'));
+  assert(html.includes('class="checkin-varios-content"'));
+});
+test('Al expandir Varios, se conservan buscador, artículos y subtotales',()=>{
+  setup([]);
+  const data=t.getUI();
+  t.setUI({...data,checkinVariosOpen:true,checkinVarios:[
+    {key:'checkvar1',productId:'producto-002',quantity:'2',roomKey:'principal'}
+  ]});
+  const html=t.renderCheckin();
+  assert(html.includes('id="checkin-varios-panel" class="group-rooms checkin-varios" aria-label="Varios para este huésped" open'));
+  const summary=html.slice(html.indexOf('<summary class="checkin-varios-toggle">'),html.indexOf('</summary>'));
+  assert(summary.includes('1 producto(s) seleccionados'));
+  assert(summary.includes('$1,00'));
+  assert(html.includes('id="checkin-varios-search"'));
+  assert(html.includes('checkvar1__qty'));
+  assert(html.includes('Quitar'));
+  assert.equal(t.quoteCheckinVarios(bookingForm()).total,1);
+});
+test('Cerrar el panel no elimina Varios ni invalida cálculos de hospedaje',()=>{
+  setup([]);
+  const data=t.getUI();
+  t.setUI({...data,checkinVariosOpen:false,checkinVarios:[
+    {key:'checkvar1',productId:'producto-002',quantity:'2',roomKey:'principal'}
+  ]});
+  const html=t.renderCheckin();
+  assert(html.includes('1 producto(s) seleccionados'));
+  assert(!html.includes('aria-label="Varios para este huésped" open'));
+  const estimate=t.checkinGroupEstimate(bookingForm());
+  assert.equal(estimate.variosTotal,1);
+  assert.equal(estimate.grandTotal,21); // Una habitación individual ($20) + dos aguas ($1).
+  assert.equal(t.getUI().checkinVarios.length,1);
 });
 
 console.log('Pruebas en memoria con cédulas ficticias; no se escriben datos en Supabase.');
