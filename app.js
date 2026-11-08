@@ -556,8 +556,9 @@
   const rooms=db.rooms,active=activeStays(),openStaysByRoom=new Map(active.map(s=>[s.roomId,s]));
   const occupied=rooms.filter(r=>r.status==='ocupada').length;
   const clean=rooms.filter(r=>r.status==='disponible').length;
-  const owing=rooms.filter(r=>r.status==='ocupada'&&openStaysByRoom.has(r.id)&&dueOf(openStaysByRoom.get(r.id))>0).length;
-  const receivable=asMoney(active.filter(s=>dueOf(s)>0).reduce((n,s)=>n+dueOf(s),0));
+  const owingStays=rooms.filter(r=>r.status==='ocupada').map(r=>openStaysByRoom.get(r.id)).filter(s=>s&&dueOf(s)>0);
+  const owing=owingStays.length;
+  const receivable=asMoney(owingStays.reduce((n,s)=>n+dueOf(s),0));
   const roomIds=new Set(rooms.filter(r=>r.status!=='arrendada').map(r=>r.id));
   const reserved=new Set(db.reservations.filter(b=>
     ['pendiente','confirmada'].includes(b.status)&&b.departure>today()&&roomIds.has(b.roomId)
