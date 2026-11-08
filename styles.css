@@ -668,3 +668,26 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
  .compact-person-fields>.reception-auto-shift small{margin-left:auto}
  .reception-auto-shift-current time{font-size:10px}
 }
+
+
+/* v0.21 · Conteos por Nevera/Bodega y alertas visuales de Varios */
+.stock-scan-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+.stock-scan-actions>.btn{min-height:44px}
+.stock-scan-actions>small{flex:1;min-width:170px;color:#667b6e;font-size:11px;line-height:1.5}
+#stock-preview{margin-top:12px;line-height:1.6}
+.product-catalog-grid .product-item{border-color:#d9e6dc;background:#fff}
+.product-catalog-grid .product-item.stock-low{background:#fff9e7;border-color:#e6bb4a}
+.product-catalog-grid .product-item.stock-refill{background:#edf7f5;border-color:#71b1a7}
+.product-catalog-grid .product-item.stock-empty{background:#fff0ee;border-color:#e78c81;color:#852f27}
+.product-catalog-grid .product-item.stock-unknown{background:#fff;border-color:#d9e6dc}
+.product-catalog-grid .product-item[disabled]{cursor:not-allowed;opacity:.8}
+.product-catalog-grid .product-item.stock-empty .price{color:#ad3228}
+td.stock-low{color:#996b00;font-weight:750}
+td.stock-empty{color:#b4372a;font-weight:750}
+td.stock-refill{color:#087769;font-weight:750}
+td.stock-unknown{color:#718074}
+.room-extra-search-result:disabled{opacity:.76;background:#f4f7f5;cursor:not-allowed}
+@media(max-width:680px){
+ .stock-scan-actions{flex-direction:column;align-items:stretch}
+ .stock-scan-actions>small{min-width:0}
+}
