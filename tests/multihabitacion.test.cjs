@@ -5,7 +5,7 @@ const tail='  render();\n})();';
 assert(src.trimEnd().endsWith(tail),'Se cambió el cierre de app.js');
 const code=src.trimEnd().slice(0,-tail.length)+
   '\nwindow.__multi={getDB:()=>db,setDB:d=>{db=d;},getUI:()=>ui,setUI:val=>{ui=val;},defaults,checkinAssignments,checkinGroupEstimate,'+
-  'prepareCheckinGroup,processCheckin,renderCheckin,renderRoomAccount,renderClientRooms,quoteCheckinVarios,filterCheckinProducts,renderCheckinVarios,stayHistoryEvents,'+
+  'prepareCheckinGroup,processCheckin,renderCheckin,renderRoomAccount,renderClientRooms,quoteCheckinVarios,filterCheckinProducts,renderCheckinVarios,stayHistoryEvents,checkEcuadorDocument,validDoc,getGuestByDocument,saveGuest,'+
   'activeStays,totalOf,paidOf,dueOf,cashTotals,availableForCheckin,roomOf};\n})();';
 const messages=[],fake={
   toasts:{append(n){messages.push(n.textContent);}},
@@ -27,11 +27,11 @@ const t=ctx.window.__multi;
 function test(name,func){try{func();console.log('PASS',name);}catch(e){console.error('FAIL',name,e.stack||e);process.exitCode=1;}}
 const DATE='2026-11-07',NEXT='2026-11-08';
 function bookingForm(extra={}){
- return {firstName:'FAMILIA',secondName:'',lastName:'PRUEBA',secondLastName:'',document:'0000000000',
+ return {firstName:'FAMILIA',secondName:'',lastName:'PRUEBA',secondLastName:'',document:'0102030400',
   phone:'0990000000',email:'',arrival:DATE,departure:NEXT,
   type:'individual',roomId:'room-02',breakfast:'sin',batch1__type:'doble',
   batch1__breakfast:'sin',batch1__roomId:'room-03',
-  paymentMethod:'efectivo',paymentAmount:'50',cashTendered:'55',changeStatus:'pendiente',shift:'dia',invoice:'no',notes:'',
+  paymentMethod:'efectivo',paymentVerified:'si',paymentAmount:'50',cashTendered:'55',changeStatus:'pendiente',shift:'dia',invoice:'no',notes:'',
   ...extra};
 }
 function wrapForm(data){return {data,elements:{namedItem(){return null;}}};}
@@ -176,7 +176,7 @@ test('El formulario NO muestra importe editable y permite descuento solo por tra
  const d=setup([]);
  const html=t.renderCheckin();
  assert(!html.includes('name="paymentAmount"'));
- assert(html.includes('Por cobrar (tarifa normal)'));
+ assert(html.includes('Por cobrar · requiere doble confirmación'));
  assert(html.includes('Transferencia · precio con descuento'));
  assert(!html.includes('Efectivo · precio con descuento'));
  assert(!html.includes('Por cobrar · precio con descuento'));
@@ -184,7 +184,7 @@ test('El formulario NO muestra importe editable y permite descuento solo por tra
 });
 test('Por cobrar conserva el total pendiente y no registra dinero en caja',()=>{
  const d=setup([]);
- const form=bookingForm({paymentMethod:'por_cobrar',paymentAmount:'9999',cashTendered:'200'});
+ const form=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'si',paymentAmount:'9999',cashTendered:'200'});
  fake['checkin-form']=wrapForm(form);
  const p=t.prepareCheckinGroup(form);
  assert.equal(p.error,null);
@@ -338,7 +338,7 @@ test('Agregar dos Varios al ingreso deja productos en cuenta y descuenta stock u
 test('Varios cargados en ingreso Por cobrar quedan pendientes y NO entran en caja',()=>{
  const d=setup([]);
  t.setUI({...t.getUI(),checkinVarios:[{key:'checkvar1',productId:'producto-002',quantity:'3',roomKey:'principal'}]});
- const form=bookingForm({paymentMethod:'por_cobrar',cashTendered:'999',paymentAmount:'999'});
+ const form=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'si',cashTendered:'999',paymentAmount:'999'});
  fake['checkin-form']=wrapForm(form);
  t.processCheckin();
  assert.equal(d.stays[0].payments.length,0);
@@ -414,6 +414,119 @@ test('Transferencia descontada incluye Varios a precio normal, sin reducir los p
  assert.equal(d.stays[0].payments[0].amount,18);
  assert.equal(t.dueOf(d.stays[0]),0);
  assert.equal(d.extras[0].price,0.5);
+});
+
+
+test('La cédula se valida con provincia y dígito verificador módulo 10',()=>{
+ const cases=[
+   ['0102030400',true], // Secuencia sintética con estructura matemática válida
+   ['0102030401',false], // Dígito final incorrecto
+   ['0000000000',false], // Provincia inválida
+   ['9902030400',false], // Provincia inexistente
+   ['0162030400',false], // Tercer dígito inválido para cédula
+   ['3040102034',true],  // Serie 30, inscripción consular, tercer dígito 4
+   ['3051234569',true],  // Serie 30, inscripción consular, tercer dígito 5
+   ['3010102031',false] // Serie 30 con tercer dígito no admitido
+ ];
+ for(const [document,expected] of cases)
+   assert.equal(t.validDoc(document),expected,'Validación incorrecta para muestra sintética '+document);
+});
+test('Un RUC personal terminado en 001 hereda la validación de la cédula base',()=>{
+ const good=t.checkEcuadorDocument('0102030400001');
+ assert.equal(good.valid,true);
+ assert.equal(good.canonical,'0102030400');
+ assert.equal(good.kind,'ruc_persona_natural');
+ for(const invalid of ['0102030401001','0102030400002','0102030400ABC','010203040000','01020304000011','1790000123001'])
+   assert.equal(t.validDoc(invalid),false,'No debe aceptar '+invalid);
+});
+test('Una cédula y el RUC 001 del mismo titular no duplican su ficha',()=>{
+ const db=setup([]);
+ const data={firstName:'FAMILIA',lastName:'DE PRUEBA',secondName:'',secondLastName:'',
+   document:'0102030400001',phone:'0990000000',email:''};
+ const first=t.saveGuest(data);
+ assert.equal(db.guests.length,1);
+ assert.equal(t.getGuestByDocument('0102030400').id,first.id);
+ assert.equal(t.getGuestByDocument('0102030400001').id,first.id);
+ t.saveGuest({...data,document:'0102030400'});
+ assert.equal(db.guests.length,1);
+ assert.equal(db.guests[0].document,'0102030400001');
+});
+test('Efectivo es el pago inicial; por cobrar exige primero autorización marcada',()=>{
+ const db=setup([]);
+ assert(t.renderCheckin().includes('Confirmo que el pago se recibió'));
+ const defaultPay=t.checkEcuadorDocument('0102030400');
+ assert(defaultPay.valid);
+ assert(t.renderCheckin().includes('checkin-payment-verified'));
+ assert(t.renderCheckin().includes('checkin-credit-confirmed'));
+ const f=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'',paymentVerified:''});
+ const plan=t.prepareCheckinGroup(f);
+ assert(plan.error&&/primera confirmación/i.test(plan.error));
+ fake['checkin-form']=wrapForm(f);
+ t.processCheckin();
+ assert.equal(db.stays.length,0);
+ assert.equal(db.guests.length,0);
+});
+test('Un pago no verificado impide registrar ingreso aunque figure como efectivo',()=>{
+ const db=setup([]);
+ const f=bookingForm({paymentVerified:'',cashTendered:'40'});
+ assert(/confirma|confirmar|verific/i.test(t.prepareCheckinGroup(f).error));
+ fake['checkin-form']=wrapForm(f);t.processCheckin();
+ assert.equal(db.stays.length,0);
+ assert.equal(db.rooms.find(r=>r.id==='room-02').status,'disponible');
+});
+test('El efectivo entregado debe declararse explícitamente antes del ingreso',()=>{
+ const db=setup([]);
+ const f=bookingForm({cashTendered:'',paymentVerified:'si'});
+ assert(/efectivo recibido/i.test(t.prepareCheckinGroup(f).error));
+ fake['checkin-form']=wrapForm(f);t.processCheckin();
+ assert.equal(db.stays.length,0);
+});
+test('Una transferencia sin confirmación de acreditación se rechaza',()=>{
+ const db=setup([]);
+ const f=bookingForm({paymentMethod:'transferencia',transferCode:'TEST-REF',paymentVerified:''});
+ const plan=t.prepareCheckinGroup(f);
+ assert(/confirmar|verific/i.test(plan.error));
+ fake['checkin-form']=wrapForm(f);t.processCheckin();
+ assert.equal(db.stays.length,0);
+});
+test('La segunda confirmación rechazada NO escribe huéspedes, reservas ni caja',()=>{
+ const db=setup([]);
+ const f=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'si'});
+ const previous=ctx.window.confirm;
+ ctx.window.confirm=()=>false;
+ try{
+   fake['checkin-form']=wrapForm(f);t.processCheckin();
+   assert.equal(db.stays.length,0);
+   assert.equal(db.guests.length,0);
+   assert.equal(db.extras.length,0);
+   assert.equal(db.rooms.find(r=>r.id==='room-02').status,'disponible');
+ }finally{ctx.window.confirm=previous;}
+});
+test('Por cobrar con doble confirmación guarda la excepción y saldo por habitación',()=>{
+ const db=setup([]);
+ const f=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'si',paymentVerified:''});
+ const confirmations=[];
+ const previous=ctx.window.confirm;
+ ctx.window.confirm=msg=>{confirmations.push(msg);return true;};
+ try{fake['checkin-form']=wrapForm(f);t.processCheckin();}
+ finally{ctx.window.confirm=previous;}
+ assert(confirmations.length>=1);
+ assert(confirmations[0].includes('SEGUNDA CONFIRMACIÓN'));
+ assert.equal(db.stays.length,1);
+ assert.equal(db.stays[0].payments.length,0);
+ assert.equal(db.stays[0].creditApproval?.mode,'doble_confirmacion');
+ assert.equal(db.stays[0].creditApproval?.amount,20);
+ assert.equal(t.dueOf(db.stays[0]),20);
+ assert(t.stayHistoryEvents(db.stays[0]).some(x=>x.title==='Ingreso por cobrar autorizado'));
+});
+test('Los pagos correctos dejan verificación registrada y no requieren autorización de crédito',()=>{
+ const db=setup([]);
+ const f=bookingForm({paymentVerified:'si',cashTendered:'20'});
+ fake['checkin-form']=wrapForm(f);t.processCheckin();
+ assert.equal(db.stays.length,1);
+ assert(db.stays[0].paymentVerifiedAt);
+ assert.equal(db.stays[0].creditApproval,null);
+ assert.equal(t.dueOf(db.stays[0]),0);
 });
 
 console.log('Pruebas en memoria con cédulas ficticias; no se escriben datos en Supabase.');
