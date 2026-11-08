@@ -733,12 +733,14 @@
   </section>`;
 }
   function renderCheckinBreakdown(d){
-  const {items,nights,total}=checkinGroupEstimate(d);
+  const {items,nights,total,variosTotal,grandTotal}=checkinGroupEstimate(d);
   return `<div class="group-breakdown" id="checkin-room-breakdown">
     ${items.map((e,i)=>`<div class="group-breakdown-line"><div><strong>${e.roomId?`Hab. ${esc(roomOf(e.roomId)?.number||'—')}`:i===0?'Habitación principal':'Habitación adicional '+(i+1)}</strong>
-      <small>${esc(LABELS[e.type])} · ${e.breakfast==='con'?'Con desayuno':'Sin desayuno'} · ${nights} noche(s)${e.saved>0?' · Ahorra '+money(e.saved):''}</small></div>
+      <small>${esc(LABELS[e.type])} · ${e.breakfast==='con'?'Con desayuno':'Sin desayuno'} · ${nights} noche(s)${e.saved>0?' · Ahorra '+money(e.saved):''}${e.variosTotal>0?' · Varios '+money(e.variosTotal):''}</small></div>
       <strong>${e.total===null?'Por definir':money(e.total)}</strong></div>`).join('')}
-    <div class="group-breakdown-line group-breakdown-total"><span>Total de ${items.length} habitación(es)</span><strong>${total===null?'Por definir':money(total)}</strong></div>
+    <div class="group-breakdown-line"><span>Hospedaje</span><strong>${total===null?'Por definir':money(total)}</strong></div>
+    <div class="group-breakdown-line"><span>Varios agregados al ingresar</span><strong>${variosTotal===null?'Revisar':money(variosTotal)}</strong></div>
+    <div class="group-breakdown-line group-breakdown-total"><span>Total hospedaje + Varios</span><strong>${grandTotal===null?'Por definir':money(grandTotal)}</strong></div>
   </div>`;
 }
   function checkinRoomOptions(d,excluded=[]){
@@ -749,7 +751,7 @@
   }
   function renderCheckin(){
     const d=ui.checkinDraft||(ui.checkinDraft=initialCheckinDraft());
-    const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=checkinNightRate(d.type,d.breakfast,d.paymentMethod),stayTotal=estimation.total,b=reservationOf(ui.prefillBookingId);
+    const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=checkinNightRate(d.type,d.breakfast,d.paymentMethod),stayTotal=estimation.grandTotal,b=reservationOf(ui.prefillBookingId);
     const bookedAdvance=b?.advance||0,initialPayment=checkinPaymentAmount(d,stayTotal,bookedAdvance),choice=checkinPaymentChoice(d.paymentMethod);
     return head('Recepción / check-in','Registrar ingreso de huésped','Búsqueda por cédula y asignación de una o varias habitaciones al mismo titular.',btn('Ver habitaciones','go-habitaciones','btn-secondary'))+
     `<div class="two-col"><section class="panel"><div class="panel-head"><div><h2>Nuevo registro de hospedaje</h2><p>Complete los datos obligatorios marcados con *</p></div>${tag('Ingreso','success')}</div>
@@ -765,6 +767,7 @@
           <div class="field"><label>Precio por noche</label><div class="readonly-info" id="checkin-night-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</div></div>
         </div>
         ${renderCheckinExtraRooms(d)}
+        ${renderCheckinVarios(d)}
         <div class="form-section-label">03 · Forma de pago y tarifa</div><div class="form-grid cols-3">
           ${select('Forma de pago / precio','paymentMethod',CHECKIN_PAYMENT_OPTIONS,d.paymentMethod||'por_cobrar')}
           ${select('Turno de recepción','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
@@ -782,8 +785,8 @@
         <div class="form-actions"><button class="btn btn-secondary" type="reset" id="clear-checkin">Limpiar formulario</button><button class="btn btn-primary" type="submit">Registrar ingreso</button></div>
       </form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Resumen de hospedaje</h2><p>Tarifa según configuración del hotel</p></div></div><div class="panel-body">
-        <div class="summary-card"><div class="mini-caption">TOTAL DE LAS HABITACIONES</div><div class="summary-price" id="checkin-total">${stayTotal===null?'Por definir':money(stayTotal)}</div>${renderCheckinBreakdown(d)}<div class="summary-pair"><span>Tarifa por noche principal</span><strong id="preview-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</strong></div><div class="summary-pair"><span>Noches por habitación</span><strong id="preview-nights">${nights}</strong></div><div class="summary-pair"><span>Anticipo registrado</span><strong id="preview-advance">${money(bookedAdvance)}</strong></div><div class="summary-pair"><span>Pago automático al ingreso</span><strong id="preview-payment">${money(initialPayment)}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong id="preview-due">${stayTotal===null?'Por definir':money(Math.max(0,stayTotal-bookedAdvance-initialPayment))}</strong></div></div>
-        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa. El descuento solo se selecciona al pagar por transferencia, para hospedaje sin desayuno y sin solicitud de factura; no incluyen personas adicionales, niños ni consumos. La facturación debe cumplir las obligaciones tributarias aplicables.</div>
+        <div class="summary-card"><div class="mini-caption">TOTAL HOSPEDAJE + VARIOS</div><div class="summary-price" id="checkin-total">${stayTotal===null?'Por definir':money(stayTotal)}</div>${renderCheckinBreakdown(d)}<div class="summary-pair"><span>Tarifa por noche principal</span><strong id="preview-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</strong></div><div class="summary-pair"><span>Noches por habitación</span><strong id="preview-nights">${nights}</strong></div><div class="summary-pair"><span>Anticipo registrado</span><strong id="preview-advance">${money(bookedAdvance)}</strong></div><div class="summary-pair"><span>Pago automático al ingreso</span><strong id="preview-payment">${money(initialPayment)}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong id="preview-due">${stayTotal===null?'Por definir':money(Math.max(0,stayTotal-bookedAdvance-initialPayment))}</strong></div></div>
+        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa. El descuento solo se selecciona al pagar por transferencia para hospedaje sin desayuno y sin solicitud de factura; no se aplica a personas adicionales, niños ni consumos. La facturación debe cumplir las obligaciones tributarias aplicables.</div>
         <div class="dashboard-notice"><strong>Facturación:</strong> esta versión registra la solicitud, pero no emite comprobantes electrónicos del SRI.</div>
       </div></aside></div>`;
   }
@@ -947,7 +950,7 @@
     const ci=document.getElementById('checkin-form');
     if(ci){
       const f=readForm('checkin-form'),estimate=checkinGroupEstimate(f),n=estimate.nights,
-        r=checkinNightRate(f.type,f.breakfast,f.paymentMethod),total=estimate.total,
+        r=checkinNightRate(f.type,f.breakfast,f.paymentMethod),total=estimate.grandTotal,
         adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=checkinPaymentAmount(f,total,adv),
         choice=checkinPaymentChoice(f.paymentMethod);
       const mappings={
@@ -969,6 +972,13 @@
       const invalidDiscount=Boolean(choice?.discounted&&(f.invoice==='si'||Boolean(ui.prefillBookingId)||
         checkinAssignments(f).some(item=>item.breakfast!=='sin')));
       document.getElementById('discount-rule-warning')?.classList.toggle('hidden',!invalidDiscount);
+      const variosQuote=quoteCheckinVarios(f);
+      const variosTotal=document.getElementById('checkin-varios-total');
+      if(variosTotal)variosTotal.textContent=variosQuote.error?'Revisar consumos':money(variosQuote.total);
+      for(const row of ui.checkinVarios||[]){
+        const el=document.getElementById(row.key+'-subtotal'),product=productOf(row.productId);
+        if(el)el.textContent=product&&Number.isFinite(Number(row.quantity))?money(asMoney(product.price*Number(row.quantity))):'Revise la cantidad';
+      }
       const breakdown=document.getElementById('checkin-room-breakdown');
       if(breakdown)breakdown.outerHTML=renderCheckinBreakdown(f);
       for(const entry of estimate.items.slice(1)){
