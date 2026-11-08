@@ -195,7 +195,7 @@
     'Doble confirmación en recepción · saldo pendiente al ingreso '+money(stay.creditApproval.amount),null,'info');
   const booking=stay.reservationId?reservationOf(stay.reservationId):null;
   if(Number(stay.advance)>0)add(booking?.createdAt||stay.createdAt,'Anticipo de reserva','Abono acreditado en esta estadía',stay.advance,'abono');
-  extensions.forEach(e=>add(e.createdAt,'Noche adicional',datePretty(e.oldDeparture)+' → '+datePretty(e.newDeparture)+' · tarifa '+money(e.rate),e.amount,'cargo'));
+  extensions.forEach(e=>add(e.createdAt,Number(e.addedNights||1)===1?'Noche adicional':'Noches adicionales',Number(e.addedNights||1)+' noche(s) · '+datePretty(e.oldDeparture)+' → '+datePretty(e.newDeparture)+' · tarifa '+money(e.rate),e.amount,'cargo'));
   (stay.additionalPeople||[]).forEach(p=>add(p.createdAt,'Persona adicional · '+(p.category==='adulto'?'Adulto':'Niño de 6 a 12 años'),(p.name||'Acompañante')+' · '+Number(p.nights||1)+' noche(s) × '+money(p.unitPrice),p.amount,'cargo'));
   db.extras.filter(e=>e.stayId===stay.id).forEach(e=>add(e.createdAt,'Varios · '+e.productName,Number(e.quantity||1)+' × '+money(e.price),Number(e.price)*Number(e.quantity),'cargo'));
   (stay.payments||[]).forEach(p=>{
@@ -1409,6 +1409,21 @@
       const preview=document.getElementById('room-extra-preview');
       if(preview)preview.textContent=product&&Number(product.price)>0?'Cargo a la cuenta: '+money(asMoney(sum)):'Seleccione un producto con precio establecido.';
     }
+    const breakfastForm=document.getElementById('room-breakfast-form');
+    if(breakfastForm){
+      const f=readForm('room-breakfast-form'),q=Number(f.quantity),preview=document.getElementById('room-breakfast-preview');
+      if(preview)preview.textContent=Number.isSafeInteger(q)&&q>=1&&q<=100
+        ?q+' desayuno(s) × '+money(BREAKFAST_EXTRA_PRICE)+' = '+money(q*BREAKFAST_EXTRA_PRICE)
+        :'Ingrese una cantidad válida de 1 a 100.';
+    }
+    const extensionForm=document.getElementById('room-extension-form');
+    if(extensionForm){
+      const f=readForm('room-extension-form'),stay=stayOf(f.stayId),quote=stay?extensionQuote(stay,f.nights):{error:'No se encontró la estadía.'};
+      const preview=document.getElementById('room-extension-preview'),error=document.getElementById('room-extension-error'),submit=document.getElementById('room-extension-submit');
+      if(preview)preview.textContent=quote.error?'Revise la cantidad y las fechas para continuar.':'Salida actual: '+datePretty(stay.departure)+' · Nueva salida: '+datePretty(quote.newDeparture)+' · Cargo: '+money(quote.total)+' ('+quote.nights+' noches × '+money(stay.roomRate)+')';
+      if(error){error.textContent=quote.error||'';error.classList.toggle('hidden',!quote.error);}
+      if(submit)submit.disabled=Boolean(quote.error);
+    }
     const personForm=document.getElementById('room-person-form');
     if(personForm){
       const f=readForm('room-person-form'),unit=Number(f.category==='nino'?db.config.childRate:db.config.extraPersonRate),nights=Number(f.nights||0);
@@ -1643,6 +1658,22 @@
   const success=appendExtra({...f,method:'efectivo',stayId:stay.id},product);
   if(success){render();toast('Consumo cargado a Hab. '+(roomOf(stay.roomId)?.number||'—')+': '+product.name+'. No se ha cobrado aún.');}
 }
+  function processBreakfast(){
+    const f=readForm('room-breakfast-form'),stay=stayOf(f.stayId),quantity=Number(f.quantity);
+    if(!stay||stay.status!=='activa'){toast('La habitación ya no tiene una estadía activa.','error');return;}
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>100){toast('Indique entre 1 y 100 desayunos.','error');return;}
+    const amount=asMoney(quantity*BREAKFAST_EXTRA_PRICE);
+    if(!window.confirm('¿Agregar '+quantity+' desayuno(s) a '+money(BREAKFAST_EXTRA_PRICE)+' cada uno? Se cargarán '+money(amount)+' a la habitación.'))return;
+    db.extras.push({
+      id:uid('extra'),stayId:stay.id,productId:'servicio-desayuno-adicional',
+      productName:'Desayuno adicional',category:'otros',quantity,price:BREAKFAST_EXTRA_PRICE,
+      method:'pendiente',reference:'',shift:f.shift==='noche'?'noche':'dia',
+      operator:String(f.operator||'').trim(),createdAt:new Date().toISOString(),
+      cashTendered:0,cashChange:0,changeStatus:'no_aplica',changeDeliveredAt:null,changeDeliveredShift:null
+    });
+    persist();render();
+    toast(quantity+' desayuno(s) agregados a Hab. '+(roomOf(stay.roomId)?.number||'—')+' por '+money(amount)+'. Cargo pendiente de cobro.');
+  }
   function processAdditionalPerson(){
   const f=readForm('room-person-form'),stay=stayOf(f.stayId);
   if(!stay||stay.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
@@ -1663,21 +1694,23 @@
   persist();render();toast('Persona adicional registrada. Cargo a la habitación: '+money(amount)+'.');
 }
   function processExtendStay(){
-  const f=readForm('room-extension-form'),stay=stayOf(f.stayId);
-  if(!stay||stay.status!=='activa'){toast('La estadía no está activa.','error');return;}
-  const newDeparture=addIsoDays(stay.departure,1),problem=extensionBlocker(stay,newDeparture);
-  if(problem){toast(problem,'error');return;}
-  const price=Number(stay.roomRate),cents=moneyCents(price);
-  if(!Number.isFinite(price)||!Number.isSafeInteger(cents)||cents<=0||price>10000){toast('La tarifa de la habitación no es válida.','error');return;}
-  const oldDeparture=stay.departure;
-  if(!window.confirm('¿Extender la habitación '+(roomOf(stay.roomId)?.number||'—')+' del '+datePretty(oldDeparture)+' al '+datePretty(newDeparture)+'? Se añadirán '+money(price)+' al saldo.'))return;
-  const createdAt=new Date().toISOString();
-  if(!Array.isArray(stay.extensions))stay.extensions=[];
-  stay.extensions.push({id:uid('extension'),oldDeparture,newDeparture,addedNights:1,rate:asMoney(price),
-    amount:asMoney(price),operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt});
-  stay.departure=newDeparture;stay.roomTotal=asMoney(Number(stay.roomTotal||0)+price);
-  persist();render();toast('Nueva salida: '+datePretty(newDeparture)+'. Cargo agregado: '+money(price)+'.');
-}
+    const f=readForm('room-extension-form'),stay=stayOf(f.stayId);
+    if(!stay||stay.status!=='activa'){toast('La estadía no está activa.','error');return;}
+    const nights=f.nights===undefined?1:Number(f.nights);
+    const quote=extensionQuote(stay,nights);
+    if(quote.error){toast(quote.error,'error');return;}
+    const oldDeparture=stay.departure,room=roomOf(stay.roomId);
+    if(!window.confirm('¿Extender la habitación '+(room?.number||'—')+' por '+quote.nights+' noche(s), del '+datePretty(oldDeparture)+' al '+datePretty(quote.newDeparture)+'? Se añadirán '+money(quote.total)+' al saldo.'))return;
+    const stamp=new Date().toISOString();
+    if(!Array.isArray(stay.extensions))stay.extensions=[];
+    stay.extensions.push({id:uid('extension'),oldDeparture,newDeparture:quote.newDeparture,
+      addedNights:quote.nights,rate:asMoney(stay.roomRate),amount:quote.total,
+      operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt:stamp});
+    stay.departure=quote.newDeparture;
+    stay.roomTotal=asMoney(moneyCents(stay.roomTotal)/100+quote.total);
+    persist();render();
+    toast('Nueva salida: '+datePretty(quote.newDeparture)+'. '+quote.nights+' noche(s) y '+money(quote.total)+' agregados.');
+  }
   function finishStay(stay,stamp,operator){
   const room=roomOf(stay.roomId);
   if(room)room.status='limpieza';
@@ -1993,7 +2026,7 @@
       syncCheckinVariosForm();updatePricing();
     }
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
-    if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
+    if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-breakfast-form','#room-extension-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
   });
   document.addEventListener('change',e=>{
     const el=e.target;
@@ -2034,11 +2067,11 @@
       updatePricing();return;
     }
     if(el.closest('#payment-form')&&el.name==='method')document.getElementById('payment-reference')?.classList.toggle('hidden',el.value!=='transferencia');
-    if(['#payment-form','#extra-form','#manual-extra-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>el.closest(s)))updatePricing();
+    if(['#payment-form','#extra-form','#manual-extra-form','#room-extra-form','#room-breakfast-form','#room-extension-form','#room-person-form','#finalize-form'].some(s=>el.closest(s)))updatePricing();
   });
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
-    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
+    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
     if(handlers[id]){e.preventDefault();handlers[id]();}
   });
   document.addEventListener('reset',e=>{
