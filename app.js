@@ -576,22 +576,28 @@
   return db.rooms.map(room=>roomPlanForDate(room,date));
 }
   function roomPrintData(date=roomPlanningDate()){
+  const projected=Boolean(ui.roomDateMode);
   const plans=roomPlansForDate(date);
-  const summary={occupied:plans.filter(p=>p.status==='ocupada').length,
-    reserved:plans.filter(p=>p.status==='reservadas').length,
-    free:plans.filter(p=>p.status==='libre').length,
-    cleaning:plans.filter(p=>p.status==='limpieza').length,
-    rented:plans.filter(p=>p.status==='arrendada').length};
-  const rows=plans.map(p=>({
-    number:String(p.room.number),type:LABELS[p.room.type]||p.room.type,
-    status:p.label,
-    arrival:p.booking?.arrival||p.stay?.arrival||p.arriving[0]?.arrival||'',
-    departure:p.booking?.departure||p.stay?.departure||p.leaving[0]?.departure||'',
-    note:p.note,
-    isArrival:p.arriving.length>0,
-    isDeparture:p.leaving.length>0
-  }));
-  return {date,summary,rows};
+  const summary={occupied:0,reserved:0,free:0,cleaning:0,rented:0};
+  const rows=plans.map(p=>{
+    const physical=p.room.status;
+    const state=projected?p.status:(physical==='disponible'?'libre':physical);
+    if(state==='ocupada')summary.occupied++;
+    else if(state==='reservadas')summary.reserved++;
+    else if(state==='libre')summary.free++;
+    else if(state==='limpieza')summary.cleaning++;
+    else if(state==='arrendada')summary.rented++;
+    const currentLabels={disponible:'Disponible / limpia',ocupada:'Ocupada',limpieza:'Pendiente de limpieza',arrendada:'Arrendada'};
+    return {
+      number:String(p.room.number),type:LABELS[p.room.type]||p.room.type,
+      status:projected?p.label:(currentLabels[physical]||'Sin estado'),
+      arrival:p.booking?.arrival||p.stay?.arrival||p.arriving[0]?.arrival||'',
+      departure:p.booking?.departure||p.stay?.departure||p.leaving[0]?.departure||'',
+      note:projected?p.note:(p.booking?'Reserva registrada · Llega '+datePretty(p.booking.arrival):'Estado físico de recepción'),
+      isArrival:p.arriving.length>0,isDeparture:p.leaving.length>0
+    };
+  });
+  return {date,summary,rows,projected};
 }
   function reservedRoomIds(){
     const valid=new Set(db.rooms.filter(r=>r.status!=='arrendada').map(r=>r.id));
@@ -723,7 +729,7 @@
       <div class="meta">Fecha de consulta: ${esc(report.date)}<br>Generado: ${esc(generated)}<br>Puerto Francisco de Orellana, Ecuador</div></header>
     <div class="summary"><span><strong>${report.summary.occupied}</strong> ocupadas</span>
       <span><strong>${report.summary.reserved}</strong> reservadas</span>
-      <span><strong>${report.summary.free}</strong> libres previstas</span>
+      <span><strong>${report.summary.free}</strong> ${report.projected?'libres previstas':'disponibles / limpias'}</span>
       <span><strong>${report.summary.cleaning}</strong> por limpiar</span>
       <span><strong>${report.summary.rented}</strong> arrendadas</span>
       <span><strong>${report.rows.length}</strong> habitaciones</span></div>
@@ -732,7 +738,7 @@
       <th style="width:13%">Salida</th><th style="width:11%">Limpieza ✓</th>
       <th style="width:22%">Observaciones / novedades</th></tr></thead>
       <tbody>${rows}</tbody></table>
-    <div class="notelead">Reporte operativo. Las fechas futuras son previsiones basadas en ingresos y reservas registrados. Una salida prevista no confirma que se haya realizado limpieza. No contiene datos personales de huéspedes.</div>
+    <div class="notelead">Reporte operativo. ${report.projected?'Las fechas planificadas son previsiones basadas en ingresos y reservas registrados.':'Los estados corresponden al mapa físico actual; reservas y salidas son informativas.'} Una salida prevista no confirma que se haya realizado limpieza. No contiene datos personales de huéspedes.</div>
     <footer class="footer"><div>Elaboró / Recepción<div class="signature"></div></div>
       <div>Verificó / Camarería<div class="signature"></div></div>
       <div>Observaciones generales<div class="signature" style="min-width:270px"></div></div></footer>
