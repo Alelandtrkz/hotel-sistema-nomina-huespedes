@@ -30,8 +30,6 @@
     ['por_cobrar','Por cobrar (tarifa normal)'],
     ['efectivo','Efectivo (tarifa normal)'],
     ['transferencia','Transferencia (tarifa normal)'],
-    ['por_cobrar_descuento','Por cobrar · precio con descuento'],
-    ['efectivo_descuento','Efectivo · precio con descuento'],
     ['transferencia_descuento','Transferencia · precio con descuento']
   ];
   const ROOM_LISTS = {
@@ -112,6 +110,7 @@
     const choice=checkinPaymentChoice(paymentMethod);
     if(!choice)return null;
     if(!choice.discounted)return normal;
+    if(choice.method!=='transferencia')return null;
     if(breakfast!=='sin'||normal===null)return null;
     const floor=DISCOUNT_ROOM_RATES[type];
     return Number.isFinite(floor)&&normal>=floor?floor:null;
@@ -576,6 +575,7 @@
     const choice=checkinPaymentChoice(d.paymentMethod);
     if(!choice)return {error:'Seleccione una forma de pago válida.'};
     if(choice.discounted){
+      if(choice.method!=='transferencia')return {error:'El precio con descuento solo está autorizado para transferencia.'};
       if(d.invoice==='si')return {error:'La tarifa con descuento está disponible únicamente sin solicitud de factura.'};
       if(booking)return {error:'No se puede aplicar el descuento a una reserva previamente confirmada con otra tarifa. Mantenga el precio de la reserva.'};
       if(checkinAssignments(d).some(item=>item.breakfast!=='sin'))
@@ -687,7 +687,7 @@
           <div class="field ${choice?.method==='transferencia'?'':'hidden'}" id="transfer-field"><label for="transferCode">Código de transferencia *</label><input name="transferCode" id="transferCode" placeholder="Referencia bancaria" value="${esc(d.transferCode||'')}"></div>
         </div>${cashChangeFields('checkin')}
         <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'Por cobrar: no se registra dinero recibido y el importe queda como saldo pendiente.':'Pago completo: se aplica automáticamente el saldo de todas las habitaciones, descontando cualquier anticipo registrado.'}</div>
-        <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">La tarifa con descuento solo aplica sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
+        <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">El descuento solo se permite por transferencia, sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
         <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
           ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice)}
         </div><div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
@@ -698,7 +698,7 @@
       </form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Resumen de hospedaje</h2><p>Tarifa según configuración del hotel</p></div></div><div class="panel-body">
         <div class="summary-card"><div class="mini-caption">TOTAL DE LAS HABITACIONES</div><div class="summary-price" id="checkin-total">${stayTotal===null?'Por definir':money(stayTotal)}</div>${renderCheckinBreakdown(d)}<div class="summary-pair"><span>Tarifa por noche principal</span><strong id="preview-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</strong></div><div class="summary-pair"><span>Noches por habitación</span><strong id="preview-nights">${nights}</strong></div><div class="summary-pair"><span>Anticipo registrado</span><strong id="preview-advance">${money(bookedAdvance)}</strong></div><div class="summary-pair"><span>Pago automático al ingreso</span><strong id="preview-payment">${money(initialPayment)}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong id="preview-due">${stayTotal===null?'Por definir':money(Math.max(0,stayTotal-bookedAdvance-initialPayment))}</strong></div></div>
-        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa. Los descuentos corresponden exclusivamente a hospedaje sin desayuno y sin solicitud de factura; no incluyen personas adicionales, niños ni consumos. La facturación debe cumplir las obligaciones tributarias aplicables.</div>
+        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa. El descuento solo se selecciona al pagar por transferencia, para hospedaje sin desayuno y sin solicitud de factura; no incluyen personas adicionales, niños ni consumos. La facturación debe cumplir las obligaciones tributarias aplicables.</div>
         <div class="dashboard-notice"><strong>Facturación:</strong> esta versión registra la solicitud, pero no emite comprobantes electrónicos del SRI.</div>
       </div></aside></div>`;
   }
