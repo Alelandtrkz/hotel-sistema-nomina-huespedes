@@ -1,3 +1,20 @@
+# Hotel Unicornio v0.13 — Resumen numérico en Habitaciones
+
+En la vista **Habitaciones** se muestran cuatro tarjetas de resumen **encima** del mapa, con el diseño del Panel general:
+
+- **Ocupadas:** habitaciones cuyo estado actual es `ocupada`.
+- **Limpias:** habitaciones cuyo estado es `disponible`, listas para recibir huéspedes.
+- **X/C:** habitaciones ocupadas con al menos una cuenta activa con saldo pendiente; incluye el valor total de esas cuentas.
+- **Reservadas:** cantidad de **habitaciones distintas** del inventario operativo asignadas a reservas `pendiente` o `confirmada` vigentes/futuras, cuya salida es posterior a hoy. No se duplican habitaciones con varias reservas en fechas diferentes, ni se incluyen reservas vencidas, canceladas, sin habitación asignada, arrendadas o ya convertidas en ingreso.
+
+Los indicadores se calculan desde el estado actualizado de Supabase al renderizar la vista, no son contadores fijos ni reemplazan registros históricos. **X/C es un subconjunto de Ocupadas**, y una habitación actualmente ocupada puede tener también una reserva futura, así que las cuatro cifras no deben sumarse.
+
+**Se conserva íntegro el Mapa de habitaciones**, incluidos los estados disponible, ocupada pagada, ocupada por cobrar, pendiente de limpieza y arrendada; también se preservan los filtros **Todos los estados** y **Todos los tipos**, además de la apertura de la cuenta al tocar una habitación. Los cuadros numéricos muestran el total general independientemente del filtro aplicado al mapa.
+
+Las pruebas automáticas `tests/rooms-overview.test.cjs` cubren los conteos, la desduplicación de reservas, las deudas, los estados y la permanencia del mapa con sus filtros. No se cambian tablas ni datos en Supabase.
+
+---
+
 # Hotel Unicornio v0.12 — Forma de pago compacta
 
 La sección **03 · Forma de pago y tarifa** del formulario de ingreso fue reorganizada para ocupar menos altura en computadora y celular, sin cambiar el cálculo ni las obligaciones de confirmación.
