@@ -41,3 +41,5 @@ jobs:
         run: node tests/cuenta-habitacion-v018.test.cjs
       - name: Verificar turnos automáticos y formularios compactos
         run: node tests/cuenta-compacta-v019.test.cjs
+      - name: Probar persona adicional sin nombre y fecha actual del turno
+        run: node tests/cuenta-persona-v020.test.cjs

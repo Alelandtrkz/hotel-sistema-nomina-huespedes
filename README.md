@@ -1,3 +1,18 @@
+# Hotel Unicornio v0.20 — Persona adicional sin nombres y fecha en turno automático
+
+En **Cuenta por habitación → Agregar persona adicional** se retira por completo el campo de nombre y apellido de la persona adicional. La operación se registra con **categoría**, **noches a cobrar**, **encargado** y **turno automático**; el cargo sigue utilizando la tarifa configurada para adulto o niño por noche.
+
+- Los cargos nuevos quedan con nombre vacío y se muestran como **Acompañante** en el historial. Los registros anteriores con nombre se siguen mostrando sin alterar su información. El formulario antiguo y las pruebas sintéticas que suministraban un nombre siguen siendo compatibles.
+- La distribución en escritorio utiliza una sola fila compacta: categoría, contador de noches con iconos Lucide, campo **Encargado** más angosto y tarjeta de turno con más espacio. En teléfonos se adapta a dos columnas y a una tarjeta de turno de ancho completo.
+- La tarjeta de **Turno automático** muestra ahora **Día/Noche, fecha local actual y horario**. Calcula la fecha usando `America/Guayaquil` (El Coca), aunque el móvil esté configurado en otra zona horaria. El horario es Día: 07:30–19:29; Noche: 19:30–07:29.
+- La fecha se actualiza al renderizar el formulario; el turno real se vuelve a calcular **cuando se confirma y registra** la operación.
+- La mejora visual del turno y la fecha aplica también a las operaciones de desayunos adicionales y extensión de estadía, que comparten la misma tarjeta.
+- No se alteran las tarifas, saldos, abonos, extensiones ni el esquema de Supabase.
+
+**Pruebas:** `tests/cuenta-persona-v020.test.cjs` cubre eliminación del campo, cargos de adulto y niño sin nombre, compatibilidad con movimientos anteriores y cambios de fecha/turno alrededor de medianoche en Ecuador. Se actualiza el test visual de v0.19 y se mantienen todas las baterías anteriores; GitHub Pages se publica únicamente si pasan.
+
+---
+
 # Hotel Unicornio v0.19 — Controles compactos y turno automático en cuentas de habitación
 
 En **Cuenta por habitación**, tres operaciones se presentan de forma más compacta:

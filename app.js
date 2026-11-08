@@ -537,21 +537,17 @@
     return `<details class="phase2-operation" id="phase2-people"><summary><span>Agregar persona adicional</span><small>Adultos ${money(adult)} · niños ${money(child)} por persona y noche aplicada</small></summary>
       <div class="phase2-operation-body compact-operation-body"><form id="room-person-form">
         <input type="hidden" name="stayId" value="${esc(stay.id)}">
-        <div class="compact-person-main">
-          <div class="field compact-person-name"><input id="room-person-name" name="name" type="text" maxlength="100" required autocomplete="off" aria-label="Nombre de la persona adicional" placeholder="Nombre y apellido de la persona adicional"></div>
+        <div class="compact-person-fields">
           ${select('Categoría','category',[['adulto','Adulto mayor de 12 años'],['nino','Niño de 6 a 12 años']],'adulto','','room-person-category')}
-        </div>
-        <div class="compact-operation-row compact-person-secondary">
           ${compactQuantityStepper('nights','room-person-nights','Noches a cobrar',maxNights)}
           ${field('Encargado','operator','',{id:'room-person-operator',placeholder:'Recepción'})}
           ${automaticShiftHint()}
         </div>
         <div id="room-person-preview" class="phase2-preview compact-charge-preview">Cargo estimado: ${money(adult)} por 1 noche.</div>
         <button type="submit" class="btn btn-primary section-gap">Agregar persona y registrar cargo</button>
-        <p class="mini-caption section-gap">Se registra una persona por operación. Este cargo no constituye un registro oficial de identidad; confirme la tarifa antes de guardar.</p>
+        <p class="mini-caption section-gap">Se registra una persona por operación sin solicitar su nombre. Este cargo no constituye un registro oficial de identidad; confirme la tarifa antes de guardar.</p>
       </form></div></details>`;
   }
-
   function extensionQuote(stay,nights){
     const n=Number(nights),max=365-getNightCount(stay.arrival,stay.departure);
     if(!Number.isSafeInteger(n)||n<1||n>90||n>max)return {error:'Seleccione entre 1 y 90 noches, sin superar 365 noches totales.'};
@@ -1411,8 +1407,17 @@
   }
   const receptionShift=()=>receptionShiftAt(new Date());
   function automaticShiftHint(){
-    const shift=receptionShift();
-    return `<div class="reception-auto-shift" role="status"><span>Turno automático</span><strong>${shift==='dia'?'Día':'Noche'}</strong><small>07:30 a 19:30 · El Coca</small></div>`;
+    // La fecha y el turno siempre corresponden a El Coca, incluso si el navegador usa otra zona horaria.
+    const instant=new Date(),timeZone='America/Guayaquil',shift=receptionShiftAt(instant);
+    const parts=new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(instant);
+    const value=type=>parts.find(part=>part.type===type)?.value||'';
+    const isoDate=value('year')+'-'+value('month')+'-'+value('day');
+    const label=new Intl.DateTimeFormat('es-EC',{timeZone,day:'numeric',month:'short',year:'numeric'}).format(instant);
+    return `<div class="reception-auto-shift" role="status" aria-label="Turno de recepción y fecha actual de El Coca">
+      <span>Turno automático</span>
+      <div class="reception-auto-shift-current"><strong>${shift==='dia'?'Día':'Noche'}</strong><time datetime="${isoDate}">${esc(label)}</time></div>
+      <small>${shift==='dia'?'07:30–19:30':'19:30–07:30'} · El Coca</small>
+    </div>`;
   }
   // SVGs reproducen la geometría Plus y Minus de Lucide; no requieren librerías externas.
   const stepIconMinus='<svg xmlns="http://www.w3.org/2000/svg" class="lucide lucide-minus" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
@@ -1870,14 +1875,14 @@
   if(!stay||stay.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
   const name=String(f.name||'').trim().replace(/\s+/g,' '),category=f.category,nights=Number(f.nights);
   const maxNights=getNightCount(stay.arrival,stay.departure);
-  if(!name||name.length>100){toast('Ingrese el nombre de la persona adicional (máximo 100 caracteres).','error');return;}
+  if(name.length>100){toast('El nombre de referencia no puede superar 100 caracteres.','error');return;}
   if(!['adulto','nino'].includes(category)){toast('Seleccione una categoría de edad válida.','error');return;}
   if(!Number.isSafeInteger(nights)||nights<1||nights>maxNights||nights>365){toast('Indique noches a cobrar entre 1 y las noches actuales de estadía.','error');return;}
   const unitPrice=Number(category==='adulto'?db.config.extraPersonRate:db.config.childRate);
   const cents=moneyCents(unitPrice);
   if(!Number.isFinite(unitPrice)||!Number.isSafeInteger(cents)||cents<=0||unitPrice>10000){toast('Configure una tarifa adicional válida antes de continuar.','error');return;}
   const amount=asMoney(cents*nights/100);
-  if(!window.confirm('¿Agregar a '+name+' como '+(category==='adulto'?'adulto':'niño de 6 a 12 años')+' por '+nights+' noche(s)? Se cargarán '+money(amount)+' a la habitación.'))return;
+  if(!window.confirm('¿Agregar '+(name||'una persona adicional')+' como '+(category==='adulto'?'adulto':'niño de 6 a 12 años')+' por '+nights+' noche(s)? Se cargarán '+money(amount)+' a la habitación.'))return;
   const createdAt=new Date().toISOString();
   if(!Array.isArray(stay.additionalPeople))stay.additionalPeople=[];
   stay.additionalPeople.push({id:uid('person'),name,category,nights,unitPrice:asMoney(unitPrice),amount,
