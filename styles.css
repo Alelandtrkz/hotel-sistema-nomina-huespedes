@@ -331,3 +331,24 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
   #checkin-form .checkin-payment-compact .cash-tender-zone{padding:8px}
   #checkin-form .checkin-payment-compact .cash-change-preview{font-size:18px}
 }
+
+/* v0.13 · Resumen operativo sobre el mapa de habitaciones */
+.rooms-overview{margin-bottom:19px}
+.rooms-overview .rooms-kpi{min-height:125px;position:relative}
+.rooms-overview .metric-value{font-variant-numeric:tabular-nums}
+.rooms-overview .rooms-kpi-occupied .metric-value{color:#ae4c46}
+.rooms-overview .rooms-kpi-clean .metric-value{color:#2d7e50}
+.rooms-overview .rooms-kpi-owing .metric-value{color:#32699c}
+.rooms-overview .rooms-kpi-reserved .metric-value{color:#a77422}
+.rooms-overview .rooms-kpi-occupied .metric-icon{background:#fff0ee;color:#ac514b}
+.rooms-overview .rooms-kpi-clean .metric-icon{background:#e8f5ec;color:#347d52}
+.rooms-overview .rooms-kpi-owing .metric-icon{background:#e9f1fa;color:#346b9d}
+.rooms-overview .rooms-kpi-reserved .metric-icon{background:#fff5e4;color:#af7d2e}
+.rooms-overview .metric-sub{line-height:1.45}
+@media(max-width:640px){
+ .rooms-overview{gap:9px;margin-bottom:16px}
+ .rooms-overview .rooms-kpi{padding:14px;min-height:115px}
+ .rooms-overview .metric-title{font-size:11px}
+ .rooms-overview .metric-sub{font-size:10px}
+ .rooms-overview .metric-icon{width:29px;height:29px}
+}
