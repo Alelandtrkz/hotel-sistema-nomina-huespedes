@@ -53,7 +53,7 @@ function setup(){
   {id:'booking-arrendada',roomId:'room-05',status:'pendiente',arrival:dateOffset(1),departure:dateOffset(2)}
  ];
  t.setDB(db);
- t.setUI({...t.getUI(),selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos'});
+ t.setUI({...t.getUI(),view:'habitaciones',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos'});
  return db;
 }
 test('Cuenta ocupadas, limpias, X/C y reservadas con habitaciones únicas',()=>{
