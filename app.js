@@ -357,12 +357,13 @@
     </form>`;
   }
 
+
   function renderRoomProductMatches(query){
     if(String(query||'').trim().length<2)return '<p class="mini-caption">Escriba al menos dos caracteres para buscar productos.</p>';
     const matches=roomProductMatches(query);
-    if(!matches.length)return '<p class="mini-caption">No se encontraron productos con precio. Revise el catálogo.</p>';
-    return matches.map(p=>`<button type="button" class="room-extra-search-result" data-action="pick-room-extra-product" data-id="${esc(p.id)}">
-       <strong>${esc(p.name)}</strong><small>${money(p.price)} · ${p.stock===null?'Sin conteo':'Stock '+p.stock}${p.barcode?' · código '+esc(p.barcode):''}</small>
+    if(!matches.length)return '<p class="mini-caption">No se encontraron productos. Revise el catálogo.</p>';
+    return matches.map(p=>`<button type="button" class="room-extra-search-result" data-action="pick-room-extra-product" data-id="${esc(p.id)}" ${p.price===null||Number(p.price)<=0?'disabled title="Precio de venta pendiente"':''}>
+       <strong>${esc(p.name)}</strong><small>${p.price===null?'Precio pendiente':money(p.price)} · ${esc(stockAvailabilityLabel(p))}${p.barcode?' · código '+esc(p.barcode):''}</small>
     </button>`).join('');
   }
   function selectRoomExtraProduct(id){
@@ -1427,8 +1428,7 @@
   function roomProductMatches(query){
     const q=String(query||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     if(q.length<2)return [];
-    return db.products.filter(p=>p.price!==null&&Number(p.price)>0&&
-      [p.name,p.category,p.barcode].some(v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)))
+    return db.products.filter(p=>[p.name,p.category,p.barcode].some(v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)))
       .sort(sortProduct).slice(0,12);
   }
 
