@@ -573,4 +573,35 @@ test('Cerrar el panel no elimina Varios ni invalida cálculos de hospedaje',()=>
   assert.equal(t.getUI().checkinVarios.length,1);
 });
 
+test('Formulario de cobro compacto mantiene monto automático, efectivo y confirmación obligatoria',()=>{
+ const d=setup([]);
+ const html=t.renderCheckin();
+ const start=html.indexOf('<section class="checkin-payment-compact"');
+ const finish=html.indexOf('</section>',start);
+ assert(start>0&&finish>start,'Debe existir sección exclusiva de pago');
+ const payment=html.slice(start,finish);
+ assert(payment.includes('03 · Forma de pago y tarifa'));
+ assert(payment.includes('class="form-grid cols-3 compact-payment-grid"'));
+ assert(payment.includes('id="checkin-auto-payment"'));
+ assert(payment.includes('cashTendered'));
+ assert(payment.includes('id="checkin-change-preview"'));
+ assert(payment.includes('name="paymentVerified"'));
+ assert(payment.includes('name="creditConfirmed"'));
+ assert(payment.includes('id="checkin-payment-help"'));
+ assert(!payment.includes('class="field-hint"'),'Debe eliminar nota redundante debajo del importe');
+ assert(!payment.includes('name="paymentAmount"'),'El importe sigue siendo no editable');
+});
+test('El diseño compacto no altera controles de caja ni saldo por cobrar',()=>{
+ const d=setup([]);
+ let f=bookingForm({cashTendered:'40',paymentVerified:'si',changeStatus:'dado'});
+ let plan=t.prepareCheckinGroup(f);
+ assert.equal(plan.error,null);
+ assert.equal(plan.payment,20);
+ assert.equal(plan.tender.change,20);
+ f=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'si',paymentVerified:''});
+ plan=t.prepareCheckinGroup(f);
+ assert.equal(plan.error,null);
+ assert.equal(plan.payment,0);
+ assert.equal(plan.grandTotal,20);
+});
 console.log('Pruebas en memoria con cédulas ficticias; no se escriben datos en Supabase.');

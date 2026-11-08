@@ -805,10 +805,10 @@
         </div>
         ${renderCheckinExtraRooms(d)}
         ${renderCheckinVarios(d)}
-        <div class="form-section-label">03 · Forma de pago y tarifa</div><div class="form-grid cols-3">
+        <section class="checkin-payment-compact" aria-label="Forma de pago y tarifa"><div class="form-section-label">03 · Forma de pago y tarifa</div><div class="form-grid cols-3 compact-payment-grid">
           ${select('Forma de pago / precio','paymentMethod',CHECKIN_PAYMENT_OPTIONS,d.paymentMethod||'efectivo')}
           ${select('Turno de recepción','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
-          <div class="field"><label>Valor a cobrar en el ingreso</label><div class="readonly-info checkin-auto-pay" id="checkin-auto-payment">${money(initialPayment)}</div><div class="field-hint">Se calcula automáticamente; no puede modificarse.</div></div>
+          <div class="field compact-payment-value"><label>Valor a cobrar en el ingreso</label><div class="readonly-info checkin-auto-pay" id="checkin-auto-payment" title="Calculado automáticamente; no editable">${money(initialPayment)}</div></div>
           <div class="field ${choice?.method==='transferencia'?'':'hidden'}" id="transfer-field"><label for="transferCode">Código de transferencia *</label><input name="transferCode" id="transferCode" placeholder="Referencia bancaria" value="${esc(d.transferCode||'')}"></div>
         </div>${cashChangeFields('checkin',d)}
         <div class="checkin-verification ${choice?.method==='por_cobrar'||initialPayment<=0?'hidden':''}" id="checkin-payment-verification">
@@ -816,7 +816,7 @@
             <input id="checkin-payment-verified" type="checkbox" name="paymentVerified" value="si" ${d.paymentVerified==='si'?'checked':''}>
             <span>Confirmo que el pago se recibió y verificó antes de registrar el ingreso.</span>
           </label>
-          <p>En efectivo, cuente y registre el valor entregado. En transferencia, compruebe el abono en la cuenta del hotel y registre la referencia.</p>
+          <p>Efectivo: cuente el dinero. Transferencia: verifique el abono y anote la referencia.</p>
         </div>
         <div class="checkin-credit-authorization ${choice?.method==='por_cobrar'&&amountPending>0?'':'hidden'}" id="checkin-credit-authorization">
           <strong>Excepción: habitación por cobrar</strong>
@@ -827,8 +827,9 @@
           </label>
           <p>Al guardar aparecerá la segunda confirmación con el saldo pendiente.</p>
         </div>
-        <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'Por cobrar: no se registra dinero recibido y el importe queda como saldo pendiente.':'Pago completo: se aplica automáticamente el saldo de todas las habitaciones, descontando cualquier anticipo registrado.'}</div>
+        <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'No entra dinero en caja; queda saldo pendiente por habitación.':'Cobro total calculado automáticamente; anticipos descontados.'}</div>
         <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">El descuento solo se permite por transferencia, sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
+        </section>
         <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
           ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice)}
         </div><div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
@@ -1025,8 +1026,8 @@
       if(submit)submit.textContent=choice?.method==='por_cobrar'?'Solicitar ingreso por cobrar':'Registrar ingreso con pago';
       const help=document.getElementById('checkin-payment-help');
       if(help)help.textContent=choice?.method==='por_cobrar'
-        ?'Por cobrar: no se registra dinero recibido. El total queda pendiente en la cuenta de cada habitación.'
-        :'Pago completo: se cobra automáticamente la totalidad pendiente de las habitaciones. Los abonos parciales se registran después desde cada cuenta.';
+        ?'No entra dinero en caja; queda saldo pendiente por habitación.'
+        :'Cobro total calculado automáticamente; anticipos descontados.';
       const invalidDiscount=Boolean(choice?.discounted&&(f.invoice==='si'||Boolean(ui.prefillBookingId)||
         checkinAssignments(f).some(item=>item.breakfast!=='sin')));
       document.getElementById('discount-rule-warning')?.classList.toggle('hidden',!invalidDiscount);

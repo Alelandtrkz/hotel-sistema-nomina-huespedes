@@ -1,3 +1,17 @@
+# Hotel Unicornio v0.12 — Forma de pago compacta
+
+La sección **03 · Forma de pago y tarifa** del formulario de ingreso fue reorganizada para ocupar menos altura en computadora y celular, sin cambiar el cálculo ni las obligaciones de confirmación.
+
+- Menos margen entre campos, pago en efectivo, vuelto, casilla de confirmación y la siguiente sección de facturación.
+- El importe no editable conserva su visibilidad, pero se elimina la nota redundante que aparecía debajo.
+- Los mensajes de ayuda se presentan más breves, sin un bloque de color adicional para el pago ordinario.
+- En pantallas pequeñas, el medio de pago ocupa una línea completa y el turno y el importe comparten la fila siguiente.
+- **Sin cambios funcionales:** monto calculado, abonos, transferencias, vuelto dado/pendiente, doble confirmación por cobrar y validaciones de caja siguen intactos.
+
+El cambio afecta exclusivamente el diseño de pago dentro de **Registro / ingreso**. No se modifican los datos de Supabase ni los componentes de otras operaciones de caja. Se añadieron pruebas de regresión y la publicación en Pages está condicionada a que pasen todas las pruebas.
+
+---
+
 # Hotel Unicornio v0.11 — Panel de Varios plegable
 
 En **Registro / ingreso → 02 · Detalles de alojamiento**, la sección **«Varios para este mismo huésped»** aparece **cerrada por defecto**, con una cabecera compacta que muestra el nombre de la sección, cantidad de productos seleccionados y total de Varios. Toque la cabecera (o la flecha) para abrir o cerrar.
