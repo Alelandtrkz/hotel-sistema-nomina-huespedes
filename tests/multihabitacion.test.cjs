@@ -569,7 +569,7 @@ test('Cerrar el panel no elimina Varios ni invalida cálculos de hospedaje',()=>
   assert(!html.includes('aria-label="Varios para este huésped" open'));
   const estimate=t.checkinGroupEstimate(bookingForm());
   assert.equal(estimate.variosTotal,1);
-  assert.equal(estimate.grandTotal,51);
+  assert.equal(estimate.grandTotal,21); // Una habitación individual ($20) + dos aguas ($1).
   assert.equal(t.getUI().checkinVarios.length,1);
 });
 
