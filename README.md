@@ -1,3 +1,18 @@
+# Hotel Unicornio v0.16 — Buscar huéspedes al crear reservas
+
+En **Reservas → Crear reserva**, el campo **Cédula o RUC personal (opcional)** incluye un botón **Buscar**. Se abre una ventana flotante que permite buscar por cédula/RUC, nombre completo o teléfono. Tras escribir dos caracteres o más, seleccione un huésped para completar **nombre, teléfono y documento** en el formulario; las fechas, habitación, desayuno y anticipos permanecen intactos.
+
+- Busca únicamente en los huéspedes ya cargados de Supabase después de autenticarse. No modifica fichas de huéspedes ni tablas.
+- Muestra hasta 15 coincidencias; la búsqueda ignora mayúsculas y tildes.
+- Los resultados se escapan como HTML y solo son visibles en la sesión autenticada.
+- Se cierra con el botón X, pulsando fuera de la ventana o con Escape. Mantiene los datos escritos en la reserva.
+- Si no existe coincidencia, permite seguir completando la reserva manualmente. La validación de cédula/RUC al guardar permanece igual.
+- Se adapta a pantallas móviles y no ocupa espacio fijo adicional en el formulario.
+
+**Prueba de regresión:** `tests/reservas-buscador.test.cjs` valida búsquedas, autocompletado, conservación del borrador y ausencia de modificaciones en fichas o datos reales. GitHub Actions la ejecuta antes de publicar.
+
+---
+
 # Hotel Unicornio v0.15 — Consulta de ocupación por fecha y reporte de camarería
 
 En **Habitaciones**, la barra que contiene los filtros **Todos los estados** y **Todos los tipos** ahora incluye, alineados a la derecha en computadora y en la misma sección, dos botones: **Ver por fecha** y **Imprimir reporte camarería**. En pantallas pequeñas ambos botones quedan juntos en una fila horizontal debajo de los filtros.

@@ -35,3 +35,5 @@ jobs:
         run: node tests/rooms-overview.test.cjs
       - name: Comprobar fechas y reporte imprimible de camarería
         run: node tests/room-date-housekeeping.test.cjs
+      - name: Comprobar búsqueda de huéspedes en Reservas
+        run: node tests/reservas-buscador.test.cjs
