@@ -491,3 +491,83 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
  .reservation-create-toggle-label{font-size:11px;gap:3px}
  .reservation-create-arrow{width:19px;font-size:19px}
 }
+
+
+/* v0.18 · Cuenta compacta, cargos plegables y buscador / escáner de productos */
+.account-dialog{width:min(880px,100%)}
+.account-dialog-header{padding:14px 20px;gap:12px}
+.account-dialog-header h2{font-size:20px}
+.account-dialog-body{padding:15px 20px 22px}
+.account-summary{padding:13px 16px}
+.account-main-total{padding-bottom:0;border:0;align-items:center}
+.account-main-total span{font-size:12px}
+.account-main-total strong{font-size:24px}
+.account-totals-details{margin-top:11px;border-top:1px solid #e0e9e2;padding-top:10px}
+.account-totals-details>summary{cursor:pointer;color:#32634a;font-size:11.5px;font-weight:700;list-style-position:inside}
+.account-totals-details>summary:focus-visible{outline:2px solid #75ac85;outline-offset:3px}
+.account-totals-details .account-total-grid{margin-top:13px;gap:11px}
+.account-columns{gap:12px;margin-top:14px}
+.account-info-details{border:1px solid #dce8df;border-radius:11px;min-width:0;background:#fbfdfb;overflow:hidden}
+.account-info-details>summary,.account-payment-section>summary{display:block;position:relative;cursor:pointer;list-style:none;color:#28543c;font-size:13px;font-weight:750;padding:13px 38px 13px 14px}
+.account-info-details>summary::-webkit-details-marker,.account-payment-section>summary::-webkit-details-marker{display:none}
+.account-info-details>summary::after,.account-payment-section>summary::after{content:'+';position:absolute;right:15px;top:10px;font-size:21px;font-weight:400;color:#5a7b66}
+.account-info-details[open]>summary::after,.account-payment-section[open]>summary::after{content:'−'}
+.account-info-details>summary:focus-visible,.account-payment-section>summary:focus-visible{outline:2px solid #8fc5a0;outline-offset:-2px}
+.account-info-content{border-top:1px solid #e1e9e3;padding:7px 15px 15px;background:#fff}
+.account-info-content .account-detail{padding:8px 0}
+.account-info-content .account-line{padding:9px 0}
+.account-actions{margin-top:14px;padding-top:13px}
+.phase2-operation-list{margin-top:13px;gap:10px}
+.phase2-operation summary{padding:13px 34px 13px 13px;min-height:69px}
+.phase2-operation summary:after{right:12px;top:11px}
+.phase2-operation-body{padding:14px}
+.phase2-operation-body .phase2-preview{margin:10px 0 4px}
+.account-payment-section{margin-top:13px;padding:0;overflow:hidden}
+.account-payment-content{padding:0 15px 15px;border-top:1px solid #e2eae4}
+.account-payment-content>p{margin-top:12px}
+.account-payment-content #payment-form{margin-top:10px}
+.account-payment-section .form-grid{gap:10px}
+.account-payment-section .cash-tender-zone{padding:10px;margin-top:9px}
+.account-payment-section .cash-change-preview{min-height:36px;font-size:20px}
+.room-extra-tools{display:flex;gap:9px;margin:0 0 14px}
+.room-extra-tools .btn{flex:1;white-space:normal;min-height:40px;font-size:12px}
+.room-extra-search{background:#f6faf7;border:1px solid #d6e6db;border-radius:9px;padding:11px;margin-bottom:13px}
+.room-extra-search>label{display:block;margin-bottom:6px;font-size:11px;font-weight:750;color:#285640}
+.room-extra-search>input{width:100%;min-height:42px;background:#fff;border:1px solid #cddbd1;border-radius:7px;padding:8px 10px}
+.room-extra-search-results{max-height:220px;overflow-y:auto;display:grid;gap:6px;margin-top:9px}
+.room-extra-search-result{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:3px;padding:8px 10px;background:#fff;border:1px solid #deeadf;border-radius:7px;width:100%;min-width:0}
+.room-extra-search-result:hover,.room-extra-search-result:focus-visible{border-color:#78b593;background:#eaf5ed}
+.room-extra-search-result strong{font-size:12px;color:#245139;overflow-wrap:anywhere}
+.room-extra-search-result small{font-size:10.5px;color:#678271;overflow-wrap:anywhere}
+.room-barcode-overlay{position:fixed;inset:0;z-index:185;background:rgba(12,27,22,.72);display:flex;justify-content:center;align-items:center;padding:15px}
+.room-barcode-dialog{background:white;width:min(100%,545px);max-height:96dvh;overflow-y:auto;border-radius:15px;box-shadow:0 20px 70px #0005}
+.room-barcode-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border-bottom:1px solid #dfebe1}
+.room-barcode-header strong{display:block;font-size:16px;color:#214c34}
+.room-barcode-header small{display:block;font-size:11px;color:#647b6a;margin-top:4px}
+.room-barcode-close{background:#f2f6f3;border:0;border-radius:7px;font-size:24px;color:#355944;width:36px;height:36px;flex-shrink:0}
+.room-barcode-body{padding:16px 18px}
+.room-barcode-reader{width:100%;min-height:110px;border:1px dashed #c0d4c7;border-radius:9px;overflow:hidden}
+.room-barcode-reader video{width:100%!important;max-height:240px;object-fit:cover}
+.room-barcode-buttons{display:flex;flex-wrap:wrap;gap:9px;margin:12px 0}
+.room-barcode-body>p{font-size:11px;line-height:1.5}
+.room-barcode-body form{margin-top:14px}
+.room-barcode-body form>label{font-size:12px;font-weight:750;color:#305540}
+.room-barcode-manual{display:flex;align-items:stretch;gap:9px;margin-top:7px}
+.room-barcode-manual input{min-height:43px;flex:1;min-width:0;border:1px solid #cbdcd0;border-radius:8px;padding:8px 10px}
+.barcode-settings-row{grid-template-columns:minmax(120px,1fr) minmax(80px,100px) minmax(110px,150px);gap:8px;align-items:center}
+.barcode-settings-row .field input{min-width:0;width:100%;font-size:12px}
+@media(max-width:700px){
+ .account-dialog-header{padding:12px;gap:9px}
+ .account-dialog-body{padding:12px}
+ .account-summary{padding:12px}
+ .account-columns{grid-template-columns:1fr;gap:9px}
+ .account-info-details>summary,.account-payment-section>summary{padding:12px 35px 12px 12px}
+ .phase2-operation summary{padding:12px 34px 12px 12px}
+ .room-extra-tools{gap:7px}
+ .room-extra-tools .btn{font-size:11px;padding:7px 9px}
+ .room-barcode-overlay{padding:8px}
+ .room-barcode-body,.room-barcode-header{padding:12px}
+ .room-barcode-manual{flex-direction:column}
+ .barcode-settings-row{grid-template-columns:minmax(0,1fr) minmax(68px,85px)}
+ .barcode-settings-row .field:last-child{grid-column:1/-1}
+}

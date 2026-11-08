@@ -13,6 +13,7 @@
     flex_aire:'Individual / matrimonial A/C',flex_ventilador:'Individual / matrimonial ventilador',
     doble:'Doble A/C',triple:'Triple A/C',arrendada:'Arrendada'
   };
+  const BREAKFAST_EXTRA_PRICE=5;
   const CATEGORIES = {bebidas:'Bebidas',confiteria:'Confitería',aseo:'Aseo personal',helados:'Helados',otros:'Otros / servicios'};
   const VIEWS = {inicio:'Panel general',habitaciones:'Habitaciones',ingreso:'Registro / ingreso',reservas:'Reservas',salidas:'Salidas y cobros',varios:'Varios / consumos',inventario:'Inventario de varios',caja:'Cierre de caja',huespedes:'Huéspedes',configuracion:'Tarifas y ajustes'};
   const DEFAULT_RATES = {
@@ -194,7 +195,7 @@
     'Doble confirmación en recepción · saldo pendiente al ingreso '+money(stay.creditApproval.amount),null,'info');
   const booking=stay.reservationId?reservationOf(stay.reservationId):null;
   if(Number(stay.advance)>0)add(booking?.createdAt||stay.createdAt,'Anticipo de reserva','Abono acreditado en esta estadía',stay.advance,'abono');
-  extensions.forEach(e=>add(e.createdAt,'Noche adicional',datePretty(e.oldDeparture)+' → '+datePretty(e.newDeparture)+' · tarifa '+money(e.rate),e.amount,'cargo'));
+  extensions.forEach(e=>add(e.createdAt,Number(e.addedNights||1)===1?'Noche adicional':'Noches adicionales',Number(e.addedNights||1)+' noche(s) · '+datePretty(e.oldDeparture)+' → '+datePretty(e.newDeparture)+' · tarifa '+money(e.rate),e.amount,'cargo'));
   (stay.additionalPeople||[]).forEach(p=>add(p.createdAt,'Persona adicional · '+(p.category==='adulto'?'Adulto':'Niño de 6 a 12 años'),(p.name||'Acompañante')+' · '+Number(p.nights||1)+' noche(s) × '+money(p.unitPrice),p.amount,'cargo'));
   db.extras.filter(e=>e.stayId===stay.id).forEach(e=>add(e.createdAt,'Varios · '+e.productName,Number(e.quantity||1)+' × '+money(e.price),Number(e.price)*Number(e.quantity),'cargo'));
   (stay.payments||[]).forEach(p=>{
@@ -314,6 +315,7 @@
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
+    closeRoomBarcodeScanner();
     if(!db.rooms.every(r=>['disponible','ocupada','limpieza','arrendada'].includes(r.status)))db.rooms.forEach(r=>{if(!['disponible','ocupada','limpieza','arrendada'].includes(r.status))r.status=r.type==='arrendada'?'arrendada':'disponible';});
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===ui.view));
     document.getElementById('breadcrumb').textContent=VIEWS[ui.view];
@@ -354,22 +356,180 @@
       <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago</button>
     </form>`;
   }
+
+  function renderRoomProductMatches(query){
+    if(String(query||'').trim().length<2)return '<p class="mini-caption">Escriba al menos dos caracteres para buscar productos.</p>';
+    const matches=roomProductMatches(query);
+    if(!matches.length)return '<p class="mini-caption">No se encontraron productos con precio. Revise el catálogo.</p>';
+    return matches.map(p=>`<button type="button" class="room-extra-search-result" data-action="pick-room-extra-product" data-id="${esc(p.id)}">
+       <strong>${esc(p.name)}</strong><small>${money(p.price)} · ${p.stock===null?'Sin conteo':'Stock '+p.stock}${p.barcode?' · código '+esc(p.barcode):''}</small>
+    </button>`).join('');
+  }
+  function selectRoomExtraProduct(id){
+    const p=productOf(id),field=document.getElementById('room-extra-product');
+    if(!field||!p||p.price===null||Number(p.price)<=0){toast('El producto no tiene un precio válido.','error');return false;}
+    field.value=p.id;
+    const finder=document.getElementById('room-extra-search');
+    if(finder)finder.classList.add('hidden');
+    updatePricing();
+    field.focus?.();
+    return true;
+  }
+
+  // Escáner iniciado solo a petición del recepcionista; no envía imágenes a Supabase.
+  let roomBarcodeInstance=null,roomBarcodeToken=0,roomBarcodeLoading=null,roomBarcodeDetected=false;
+  function roomBarcodeStatus(message){
+    const el=document.getElementById('room-barcode-status');
+    if(el)el.textContent=message;
+  }
+  function stopRoomBarcodeCamera(){
+    const instance=roomBarcodeInstance;
+    roomBarcodeInstance=null;
+    if(instance){
+      try{Promise.resolve(instance.stop()).catch(()=>{}).then(()=>{try{instance.clear();}catch(_){}});}
+      catch(_){try{instance.clear();}catch(__){}}
+    }
+  }
+  function closeRoomBarcodeScanner(){
+    roomBarcodeToken++;
+    roomBarcodeDetected=false;
+    stopRoomBarcodeCamera();
+    document.getElementById('room-barcode-overlay')?.remove();
+  }
+  function openRoomBarcodeScanner(){
+    if(!document.getElementById('room-extra-form'))return;
+    closeRoomBarcodeScanner();
+    const wrapper=document.createElement('div');
+    wrapper.id='room-barcode-overlay';
+    wrapper.className='room-barcode-overlay';
+    wrapper.innerHTML=`<section class="room-barcode-dialog" role="dialog" aria-modal="true" aria-label="Escanear código de barras del producto">
+      <header class="room-barcode-header"><div><strong>Escanear producto</strong><small>Use la cámara del teléfono o escriba el código impreso.</small></div>
+        <button type="button" class="room-barcode-close" data-action="close-room-barcode-scanner" aria-label="Cerrar escáner">×</button></header>
+      <div class="room-barcode-body">
+        <div id="room-barcode-reader" class="room-barcode-reader" aria-label="Vista de la cámara"></div>
+        <div class="room-barcode-buttons">
+          <button type="button" class="btn btn-secondary" id="start-room-barcode-camera" data-action="start-room-barcode-camera">Activar cámara</button>
+          <button type="button" class="btn btn-light" data-action="stop-room-barcode-camera">Detener cámara</button>
+        </div>
+        <p id="room-barcode-status" role="status" class="mini-caption">La cámara solo se abre con su autorización y requiere HTTPS.</p>
+        <form id="room-barcode-form">
+          <label for="room-barcode-manual">Código de barras manual</label>
+          <div class="room-barcode-manual"><input type="text" id="room-barcode-manual" name="barcode" autocomplete="off" maxlength="64" placeholder="EAN, UPC o Code 128">
+          <button class="btn btn-primary" type="submit">Usar código</button></div>
+        </form>
+        <p class="mini-caption">El código debe estar asociado a un producto con precio en Tarifas y ajustes. Si no está vinculado, puede buscar el artículo por nombre.</p>
+      </div></section>`;
+    document.body.appendChild(wrapper);
+    document.getElementById('room-barcode-manual')?.focus();
+  }
+  function applyRoomBarcode(raw){
+    const code=normalizeBarcode(raw);
+    if(!barcodeValid(code)||!code){roomBarcodeStatus('Ingrese un código de barras válido.');return false;}
+    const product=productByBarcode(code);
+    if(!product){
+      roomBarcodeStatus('Código '+code+' no asociado a un producto. Asigne el código en Tarifas y ajustes o use Buscar producto.');
+      return false;
+    }
+    if(product.price===null||Number(product.price)<=0){
+      roomBarcodeStatus('El producto '+product.name+' no tiene un precio establecido. Configure su precio primero.');
+      return false;
+    }
+    if(!selectRoomExtraProduct(product.id)){roomBarcodeStatus('No fue posible elegir este producto.');return false;}
+    closeRoomBarcodeScanner();
+    toast('Producto seleccionado: '+product.name+'. Confirme la cantidad y registre el cargo.');
+    return true;
+  }
+  function loadRoomBarcodeLibrary(){
+    if(window.Html5Qrcode)return Promise.resolve();
+    if(!roomBarcodeLoading){
+      roomBarcodeLoading=new Promise((resolve,reject)=>{
+        const script=document.createElement('script');
+        script.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        script.async=true;
+        script.onload=()=>window.Html5Qrcode?resolve():reject(new Error('No se pudo iniciar el lector.'));
+        script.onerror=()=>reject(new Error('No se descargó el lector de cámara.'));
+        document.head.appendChild(script);
+      }).catch(err=>{roomBarcodeLoading=null;throw err;});
+    }
+    return roomBarcodeLoading;
+  }
+  async function startRoomBarcodeCamera(){
+    const token=++roomBarcodeToken,button=document.getElementById('start-room-barcode-camera');
+    if(roomBarcodeInstance){roomBarcodeStatus('La cámara ya está activa.');return;}
+    roomBarcodeDetected=false;
+    if(button)button.disabled=true;
+    roomBarcodeStatus('Solicitando cámara...');
+    try{
+      if(!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
+        throw new Error('Este navegador no permite cámara aquí. Abra el sitio HTTPS desde Safari o Chrome, o ingrese el código manualmente.');
+      await loadRoomBarcodeLibrary();
+      if(token!==roomBarcodeToken||!document.getElementById('room-barcode-overlay'))return;
+      const scanner=new window.Html5Qrcode('room-barcode-reader');
+      roomBarcodeInstance=scanner;
+      await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:120}},
+        decoded=>{
+          if(roomBarcodeDetected)return;
+          roomBarcodeDetected=true;
+          const manual=document.getElementById('room-barcode-manual');
+          if(manual)manual.value=decoded;
+          if(!applyRoomBarcode(decoded)){
+            roomBarcodeStatus('Código leído: '+String(decoded)+'. No hay producto asociado con precio. Configure el código o búsquelo por nombre.');
+            stopRoomBarcodeCamera();
+          }
+        },()=>{});
+      if(token!==roomBarcodeToken||!document.getElementById('room-barcode-overlay')){
+        stopRoomBarcodeCamera();return;
+      }
+      roomBarcodeStatus('Apunte la cámara al código del producto.');
+    }catch(err){
+      roomBarcodeStatus('No se pudo activar la cámara: '+(err?.message||'revise los permisos')+'. Puede escribir el código manualmente.');
+      stopRoomBarcodeCamera();
+    }finally{
+      if(button&&token===roomBarcodeToken)button.disabled=false;
+    }
+  }
+
   function renderRoomExtraSection(stay){
-  const available=db.products.filter(p=>p.price!==null&&Number(p.price)>0).slice().sort(sortProduct);
-  return `<details class="phase2-operation" id="phase2-extras"><summary><span>Agregar varios a la habitación</span><small>Se cargarán a la cuenta, sin recibir dinero todavía</small></summary>
-    <div class="phase2-operation-body"><form id="room-extra-form">
-      <input type="hidden" name="stayId" value="${esc(stay.id)}">
-      <div class="form-grid cols-2">
-        ${select('Producto','productId',[['','Seleccione un producto'],...available.map(p=>[p.id,`${p.name} · ${money(p.price)}${p.stock!==null?' · stock '+p.stock:''}`])],'','required','room-extra-product')}
-        ${field('Cantidad','quantity','1',{id:'room-extra-quantity',type:'number',min:1,max:1000,step:1,required:true})}
-        ${select('Turno','shift',shiftOptions,'dia','','room-extra-shift')}
-        ${field('Encargado','operator','',{id:'room-extra-operator',placeholder:'Recepción'})}
-      </div>
-      <div id="room-extra-preview" class="phase2-preview">Seleccione un producto.</div>
-      <button class="btn btn-primary section-gap" type="submit" ${available.length?'':'disabled'}>Agregar consumo a la cuenta</button>
-      <div class="mini-caption">Los productos sin precio definido se registran desde el catálogo completo de Varios.</div>
-    </form></div></details>`;
-}
+    const available=db.products.filter(p=>p.price!==null&&Number(p.price)>0).slice().sort(sortProduct);
+    return `<details class="phase2-operation" id="phase2-extras"><summary><span>Agregar varios a la habitación</span><small>Busque productos o escanee su código de barras</small></summary>
+      <div class="phase2-operation-body"><form id="room-extra-form">
+        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        <div class="room-extra-tools">
+          <button type="button" class="btn btn-secondary" data-action="toggle-room-extra-search">⌕ Buscar producto</button>
+          <button type="button" class="btn btn-secondary" data-action="open-room-barcode-scanner">▣ Escanear código</button>
+        </div>
+        <div id="room-extra-search" class="room-extra-search hidden">
+          <label for="room-extra-search-input">Buscar por nombre, categoría o código</label>
+          <input id="room-extra-search-input" type="search" placeholder="Ej. agua, galleta, 750..." autocomplete="off">
+          <div id="room-extra-search-results" class="room-extra-search-results">${renderRoomProductMatches('')}</div>
+        </div>
+        <div class="form-grid cols-2">
+          ${select('Producto','productId',[['','Seleccione un producto'],...available.map(p=>[p.id,`${p.name} · ${money(p.price)}${p.stock!==null?' · stock '+p.stock:''}`])],'','required','room-extra-product')}
+          ${field('Cantidad','quantity','1',{id:'room-extra-quantity',type:'number',min:1,max:1000,step:1,required:true})}
+          ${select('Turno','shift',shiftOptions,'dia','','room-extra-shift')}
+          ${field('Encargado','operator','',{id:'room-extra-operator',placeholder:'Recepción'})}
+        </div>
+        <div id="room-extra-preview" class="phase2-preview">Seleccione un producto.</div>
+        <button class="btn btn-primary section-gap" type="submit" ${available.length?'':'disabled'}>Agregar consumo a la cuenta</button>
+        <div class="mini-caption">Asigne códigos de barras en Tarifas y ajustes. Los productos sin precio se agregan desde el catálogo general de Varios.</div>
+      </form></div></details>`;
+  }
+  function renderBreakfastSection(stay){
+    return `<details class="phase2-operation" id="phase2-breakfast"><summary><span>Agregar desayunos</span><small>${money(BREAKFAST_EXTRA_PRICE)} por unidad · cantidad a elección</small></summary>
+      <div class="phase2-operation-body"><form id="room-breakfast-form">
+        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        <div class="form-grid cols-2">
+          ${field('Cantidad de desayunos','quantity','1',{id:'room-breakfast-quantity',type:'number',min:1,max:100,step:1,required:true})}
+          ${select('Turno','shift',shiftOptions,'dia','','room-breakfast-shift')}
+          ${field('Encargado','operator','',{id:'room-breakfast-operator',placeholder:'Recepción'})}
+        </div>
+        <div class="phase2-preview" id="room-breakfast-preview">1 desayuno × ${money(BREAKFAST_EXTRA_PRICE)} = ${money(BREAKFAST_EXTRA_PRICE)}</div>
+        ${stay.breakfast==='con'?'<p class="mini-caption">La tarifa de esta estadía ya incluye desayuno. Añada solo desayunos adicionales solicitados.</p>':''}
+        <button type="submit" class="btn btn-primary section-gap">Agregar desayunos a la cuenta</button>
+        <p class="mini-caption">Se registra un cargo pendiente; no ingresa dinero en caja hasta cobrarlo.</p>
+      </form></div></details>`;
+  }
+
   function renderAdditionalPersonSection(stay){
   const adult=Number(db.config.extraPersonRate??10),child=Number(db.config.childRate??5),maxNights=Math.max(1,getNightCount(stay.arrival,stay.departure));
   return `<details class="phase2-operation" id="phase2-people"><summary><span>Agregar persona adicional</span><small>Adultos ${money(adult)} · niños ${money(child)} por persona y noche aplicada</small></summary>
@@ -387,23 +547,34 @@
       <p class="mini-caption section-gap">Se registra una persona por operación. Este cargo no constituye un registro oficial de identidad; confirme la tarifa antes de guardar.</p>
     </form></div></details>`;
 }
+
+  function extensionQuote(stay,nights){
+    const n=Number(nights),max=365-getNightCount(stay.arrival,stay.departure);
+    if(!Number.isSafeInteger(n)||n<1||n>90||n>max)return {error:'Seleccione entre 1 y 90 noches, sin superar 365 noches totales.'};
+    const newDeparture=addIsoDays(stay.departure,n);
+    if(!newDeparture)return {error:'No fue posible calcular la fecha de salida.'};
+    const blocker=extensionBlocker(stay,newDeparture);
+    if(blocker)return {error:blocker,newDeparture};
+    const cents=moneyCents(stay.roomRate);
+    if(!Number.isSafeInteger(cents)||cents<=0||cents>1000000)return {error:'La tarifa histórica de la habitación no es válida.'};
+    return {nights:n,newDeparture,total:asMoney(n*cents/100)};
+  }
   function renderExtendStaySection(stay){
-  const next=addIsoDays(stay.departure,1),blocker=extensionBlocker(stay,next);
-  return `<details class="phase2-operation" id="phase2-extension"><summary><span>Extender un día de estadía</span><small>Nueva salida: ${datePretty(next)} · ${money(stay.roomRate)} adicionales</small></summary>
-    <div class="phase2-operation-body">
-      <div class="phase2-preview"><strong>Salida actual:</strong> ${datePretty(stay.departure)}<br><strong>Nueva salida:</strong> ${datePretty(next)}<br><strong>Importe:</strong> ${money(stay.roomRate)} (tarifa guardada en esta estadía).</div>
-      ${blocker?`<div class="phase2-warning">${esc(blocker)}</div>`:''}
-      <form id="room-extension-form">
+    const quote=extensionQuote(stay,1);
+    return `<details class="phase2-operation" id="phase2-extension"><summary><span>Extender estadía</span><small>1 o varias noches · ${money(stay.roomRate)} por noche</small></summary>
+      <div class="phase2-operation-body"><form id="room-extension-form">
         <input type="hidden" name="stayId" value="${esc(stay.id)}">
         <div class="form-grid cols-2">
+          ${field('Noches adicionales','nights','1',{id:'room-extension-nights',type:'number',min:1,max:90,step:1,required:true})}
           ${select('Turno','shift',shiftOptions,'dia','','room-extension-shift')}
           ${field('Encargado','operator','',{id:'room-extension-operator',placeholder:'Recepción'})}
         </div>
-        <button class="btn btn-primary section-gap" type="submit" ${blocker?'disabled':''}>Confirmar una noche adicional</button>
-      </form>
-      <p class="mini-caption">Se revisa si existe una reserva asignada para la noche nueva. No se modifica ninguna reserva anterior.</p>
-    </div></details>`;
-}
+        <div class="phase2-preview" id="room-extension-preview">Salida actual: ${datePretty(stay.departure)} · Nueva salida: ${quote.newDeparture?datePretty(quote.newDeparture):'Revisar'} · Cargo: ${money(quote.total||0)}</div>
+        <div id="room-extension-error" class="phase2-warning ${quote.error?'':'hidden'}">${esc(quote.error||'')}</div>
+        <button id="room-extension-submit" class="btn btn-primary section-gap" type="submit" ${quote.error?'disabled':''}>Confirmar extensión</button>
+        <p class="mini-caption">Se comprueban todas las noches nuevas frente a reservas y estadías; las reservas previas no se modifican.</p>
+      </form></div></details>`;
+  }
   function renderFinalAccountSection(stay){
   const due=dueOf(stay),pending=pendingChangeOf(stay);
   return `<details class="phase2-operation phase2-final" id="phase2-final"><summary><span>Cierre de cuenta final y salida</span><small>${due>0?'Saldo por cobrar '+money(due):'Sin saldo de hospedaje'} · pasar habitación a limpieza</small></summary>
@@ -485,8 +656,8 @@
   const originalNights=stay?Math.max(1,getNightCount(stay.arrival,stay.departure)-extensions.reduce((n,e)=>n+Number(e.addedNights||1),0)):0;
   const history=stay?`
     <div class="account-summary">
-      <div class="account-main-total"><span>Valor por cobrar ahora</span><strong class="${due>0?'text-red':'text-green'}">${money(due)}</strong></div>
-      <div class="account-total-grid">
+      <div class="account-main-total"><span>Saldo pendiente</span><strong class="${due>0?'text-red':'text-green'}">${money(due)}</strong></div>
+      <details class="account-totals-details"><summary>Ver resumen de importes · Total ${money(totalOf(stay))} · Abonado ${money(paidOf(stay))}</summary><div class="account-total-grid">
         <div><span>Tarifa por noche</span><strong>${money(stay.roomRate)}</strong></div>
         <div><span>Noches totales</span><strong>${getNightCount(stay.arrival,stay.departure)}</strong></div>
         <div><span>Hospedaje</span><strong>${money(stay.roomTotal)}</strong></div>
@@ -495,12 +666,11 @@
         <div><span>Total cuenta</span><strong>${money(totalOf(stay))}</strong></div>
         <div><span>Abonos y anticipos</span><strong>${money(paidOf(stay))}</strong></div>
         <div><span>Acompañantes facturados</span><strong>${extrasPeople.length}</strong></div>
-      </div>
+      </div></details>
       ${owed>0?`<div class="account-change-due"><strong>Vuelto pendiente de entregar: ${money(owed)}</strong><span>Es dinero a favor del huésped y no reduce el saldo de hospedaje.</span></div>`:''}
     </div>
     ${renderClientRooms(stay)}
-    <div class="account-columns"><section>
-      <h3>Datos del huésped</h3>
+    <div class="account-columns"><details class="account-info-details"><summary>Datos del huésped</summary><div class="account-info-content">
       <div class="account-detail"><span>Nombre</span><strong>${esc(guestName(guest)||'No disponible')}</strong></div>
       <div class="account-detail"><span>Documento</span><strong>${esc(guest?.document||'—')}</strong></div>
       <div class="account-detail"><span>Teléfono</span><strong>${esc(guest?.phone||'—')}</strong></div>
@@ -509,8 +679,7 @@
       <div class="account-detail"><span>Salida prevista</span><strong>${datePretty(stay.departure)}</strong></div>
       <div class="account-detail"><span>Desayuno</span><strong>${stay.breakfast==='con'?'Incluido':'No incluido'}</strong></div>
       ${stay.notes?`<div class="account-detail"><span>Observaciones</span><strong>${esc(stay.notes)}</strong></div>`:''}
-    </section><section>
-      <h3>Desglose de la cuenta</h3>
+    </div></details><details class="account-info-details"><summary>Desglose de la cuenta</summary><div class="account-info-content">
       <div class="account-line"><div><strong>Hospedaje inicial · ${originalNights} noche(s)</strong><small>${money(stay.roomRate)} / noche</small></div><strong>${money(initialLodgingOf(stay))}</strong></div>
       ${extensions.map(e=>`<div class="account-line"><div><strong>Ampliación de estadía</strong><small>${datePretty(e.oldDeparture)} → ${datePretty(e.newDeparture)}</small></div><strong>${money(e.amount)}</strong></div>`).join('')}
       ${extrasPeople.map(p=>`<div class="account-line"><div><strong>Persona adicional: ${esc(p.name||'Acompañante')}</strong><small>${p.category==='adulto'?'Adulto':'Niño de 6 a 12 años'} · ${p.nights} noche(s) × ${money(p.unitPrice)}</small></div><strong>${money(p.amount)}</strong></div>`).join('')}
@@ -518,7 +687,7 @@
       ${stay.advance>0?`<div class="account-line paid"><div><strong>Anticipo</strong><small>Reserva vinculada</small></div><strong>−${money(stay.advance)}</strong></div>`:''}
       ${pays.map(p=>`<div class="account-line paid"><div><strong>Pago por ${p.method==='transferencia'?'transferencia':'efectivo'}</strong><small>${esc(p.createdAt?new Date(p.createdAt).toLocaleString('es-EC'):'')} ${p.cashChange>0?' · recibido '+money(p.cashTendered)+' · vuelto '+money(p.cashChange)+' ('+(p.changeStatus==='pendiente'?'pendiente':'dado')+')':''}</small></div><strong>−${money(p.amount)}</strong></div>`).join('')}
       ${!charges.length&&!pays.length&&!extrasPeople.length&&!extensions.length&&!(stay.advance>0)?'<p class="mini-caption">Sin otros movimientos todavía.</p>':''}
-    </section></div>
+    </div></details></div>
     <div class="account-actions">
       ${btn('Catálogo completo de Varios','room-add-extras','btn-secondary',`data-id="${esc(stay.id)}"`)}
       ${btn('Ver salidas y cobros','room-go-checkout','btn-secondary',`data-id="${esc(stay.id)}"`)}
@@ -526,6 +695,7 @@
     </div>
     <div class="phase2-operation-list">
       ${renderRoomExtraSection(stay)}
+      ${renderBreakfastSection(stay)}
       ${renderAdditionalPersonSection(stay)}
       ${renderExtendStaySection(stay)}
       ${renderFinalAccountSection(stay)}
@@ -534,9 +704,9 @@
       <summary>Ver historial completo de movimientos (${stayHistoryEvents(stay).length})</summary>
       ${renderStayTimeline(stay)}
     </details>
-    <div class="account-payment-section"><h3>Registrar abono parcial o total</h3><p class="mini-caption">Para pagar y registrar la salida en una sola operación, utilice «Cierre de cuenta final». Si recibe más efectivo, registre el vuelto.</p>
+    <details class="account-payment-section"><summary>Registrar abono parcial o total</summary><div class="account-payment-content"><p class="mini-caption">Para pagar y registrar la salida en una sola operación, utilice «Cierre de cuenta final». Si recibe más efectivo, registre el vuelto.</p>
       ${renderPaymentForm(stay)}
-    </div>
+    </div></details>
     ${owed>0?`<div class="account-change-actions"><strong>Vueltos pendientes a esta habitación</strong>${changeMovements().filter(x=>changePending(x.owner)>0&&((x.stayId===stay.id)||(stay.reservationId&&x.source==='reserva'&&x.id===stay.reservationId))).map(x=>`<div class="account-line"><div><span>${esc(x.label)}</span><strong>${money(changePending(x.owner))}</strong></div>${btn('Entregar vuelto','settle-change','btn-secondary btn-sm',`data-source="${esc(x.source)}" data-id="${esc(x.id)}"`)}</div>`).join('')}</div>`:''}
   `:`<div class="account-empty">
      <p>${room.status==='arrendada'?'Habitación arrendada; fuera del inventario operativo.':room.status==='limpieza'?'En limpieza. Marque disponible cuando esté lista.':'No hay estadía activa en esta habitación.'}</p>
@@ -1210,6 +1380,16 @@
   }
   const paidDirect=x=>!x.stayId&&['efectivo','transferencia'].includes(x.method);
   const productOf=id=>db.products.find(p=>p.id===id);
+  const normalizeBarcode=value=>String(value||'').trim().toUpperCase();
+  const barcodeValid=code=>!code||/^[A-Z0-9._-]{3,64}$/.test(code);
+  const productByBarcode=code=>db.products.find(p=>normalizeBarcode(p.barcode)===normalizeBarcode(code)&&normalizeBarcode(code));
+  function roomProductMatches(query){
+    const q=String(query||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    if(q.length<2)return [];
+    return db.products.filter(p=>p.price!==null&&Number(p.price)>0&&
+      [p.name,p.category,p.barcode].some(v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)))
+      .sort(sortProduct).slice(0,12);
+  }
   const shiftOptions=[['dia','Día'],['noche','Noche']];
   const destinations=()=>[['caja','Venta directa / caja'],...activeStays().map(s=>[s.id,'Cargar a Hab. '+(roomOf(s.roomId)?.number||'—')+' · '+guestName(guestOf(s.guestId))])];
   const catName=c=>CATEGORIES[c]||'Otros / servicios';
@@ -1312,7 +1492,7 @@
     <div class="form-section-label">Tarifas adicionales, según cartel de recepción</div><div class="form-grid cols-3">${field('Niño mayor de 5 años','childRate',db.config.childRate,{type:'number',min:0,step:'0.01',hint:'USD 5 por adicional; falta confirmar política para 5 años o menos.'})}${field('Persona adicional mayor de 12 años','extraPersonRate',db.config.extraPersonRate,{type:'number',min:0,step:'0.01',hint:'USD 10. No se suma automáticamente al hospedaje.'})}${field('Entrada antes de check-in','earlyFee',db.config.earlyFee,{type:'number',min:0,step:'0.01',hint:'Cargo de USD 10, según cartel.'})}</div>
     <div class="dashboard-notice">El tarifario fotografiado no especifica el precio <strong>con desayuno para habitaciones con ventilador</strong>. Se mantiene pendiente, sin inventar un valor.</div>
     <div class="form-actions"><button class="btn btn-primary" type="submit">Guardar tarifas</button></div></form></div></section>
-    <aside class="panel"><div class="panel-head"><div><h2>Catálogo de productos</h2><p>${db.products.length} artículos y servicios · precios editables</p></div></div><div class="panel-body"><form id="products-form"><div class="product-settings-list">${db.products.slice().sort(sortProduct).map(p=>`<div class="settings-table" style="grid-template-columns:1fr minmax(85px,110px)"><span class="text-strong">${esc(p.name)}<small class="mini-caption" style="display:block">${esc(CATEGORIES[p.category]||p.category||'Otros')}</small></span><div class="field"><input type="number" aria-label="Precio ${esc(p.name)}" name="product-${esc(p.id)}" min="0" step="0.01" placeholder="Por definir" value="${esc(p.price??'')}"></div></div>`).join('')}</div><div class="form-actions"><button type="submit" class="btn btn-primary">Guardar precios</button></div></form><div class="divider"></div><form id="new-product-form"><div class="form-grid">${field('Nuevo producto / servicio','name','',{required:true,placeholder:'Ej. Servicio de planchado'})}${select('Categoría','category',Object.entries(CATEGORIES),'otros')}${field('Precio unitario','price','',{type:'number',min:0,step:'0.01',placeholder:'Por definir'})}</div><button class="btn btn-secondary section-gap" type="submit">Agregar al catálogo</button></form></div></aside></div>
+    <aside class="panel"><div class="panel-head"><div><h2>Catálogo de productos</h2><p>${db.products.length} artículos y servicios · precios editables</p></div></div><div class="panel-body"><form id="products-form"><div class="product-settings-list">${db.products.slice().sort(sortProduct).map(p=>`<div class="settings-table barcode-settings-row"><span class="text-strong">${esc(p.name)}<small class="mini-caption" style="display:block">${esc(CATEGORIES[p.category]||p.category||'Otros')}</small></span><div class="field"><input type="number" aria-label="Precio ${esc(p.name)}" name="product-${esc(p.id)}" min="0" step="0.01" placeholder="Por definir" value="${esc(p.price??'')}"></div><div class="field"><input aria-label="Código de barras ${esc(p.name)}" name="barcode-${esc(p.id)}" inputmode="text" maxlength="64" autocomplete="off" placeholder="Código de barras" value="${esc(p.barcode||'')}"></div></div>`).join('')}</div><div class="mini-caption section-gap">Para escanear desde una habitación, asigne aquí el código impreso en cada producto y guarde los cambios.</div><div class="form-actions"><button type="submit" class="btn btn-primary">Guardar precios y códigos</button></div></form><div class="divider"></div><form id="new-product-form"><div class="form-grid">${field('Nuevo producto / servicio','name','',{required:true,placeholder:'Ej. Servicio de planchado'})}${select('Categoría','category',Object.entries(CATEGORIES),'otros')}${field('Precio unitario','price','',{type:'number',min:0,step:'0.01',placeholder:'Por definir'})}${field('Código de barras (opcional)','barcode','',{placeholder:'Ej. 7501234567890',maxlength:64})}</div><button class="btn btn-secondary section-gap" type="submit">Agregar al catálogo</button></form></div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Inventario de habitaciones</h2><p>Según hoja entregada: 19 flexibles A/C, 2 flexibles ventilador, 2 dobles, 2 triples y 8 arrendadas únicas.</p></div></div><div class="panel-body"><div class="pill-list">${db.rooms.map(r=>`<span class="small-tag">${esc(r.number)} · ${esc(LABELS[r.type])}</span>`).join('')}</div>
       <details class="inventory-details section-gap"><summary>Editar número, categoría y estado del inventario</summary><form id="room-inventory-form"><div class="inventory-row inventory-heading"><span>Número</span><span>Tipo</span><span>Estado</span><span>Acción</span></div>${db.rooms.map(r=>`<div class="inventory-row"><input aria-label="Número de ${esc(r.number)}" name="${esc(r.id)}__number" value="${esc(r.number)}" maxlength="8" required><select aria-label="Tipo de ${esc(r.number)}" name="${esc(r.id)}__type">${selectOptions(ROOM_TYPES.map(t=>[t,LABELS[t]]),r.type)}</select><span>${statusTag(r.status)}</span><button class="btn btn-sm btn-danger" type="button" data-action="delete-room" data-id="${esc(r.id)}">Eliminar</button></div>`).join('')}<div class="form-actions"><button class="btn btn-primary" type="submit">Guardar inventario</button></div></form></details>
       <div class="form-section-label">Agregar una habitación</div><form id="new-room-form"><div class="form-grid cols-3">${field('Número de habitación','number','',{required:true,placeholder:'Ej. 31'})}${select('Categoría física','type',ROOM_TYPES.map(t=>[t,LABELS[t]]),'flex_aire')}<div class="field"><label>&nbsp;</label><button class="btn btn-secondary" type="submit">Agregar habitación</button></div></div></form>
@@ -1378,6 +1558,21 @@
       const sum=product&&Number.isFinite(Number(product.price))&&Number(product.price)>0?Number(product.price)*Number(f.quantity||0):0;
       const preview=document.getElementById('room-extra-preview');
       if(preview)preview.textContent=product&&Number(product.price)>0?'Cargo a la cuenta: '+money(asMoney(sum)):'Seleccione un producto con precio establecido.';
+    }
+    const breakfastForm=document.getElementById('room-breakfast-form');
+    if(breakfastForm){
+      const f=readForm('room-breakfast-form'),q=Number(f.quantity),preview=document.getElementById('room-breakfast-preview');
+      if(preview)preview.textContent=Number.isSafeInteger(q)&&q>=1&&q<=100
+        ?q+' desayuno(s) × '+money(BREAKFAST_EXTRA_PRICE)+' = '+money(q*BREAKFAST_EXTRA_PRICE)
+        :'Ingrese una cantidad válida de 1 a 100.';
+    }
+    const extensionForm=document.getElementById('room-extension-form');
+    if(extensionForm){
+      const f=readForm('room-extension-form'),stay=stayOf(f.stayId),quote=stay?extensionQuote(stay,f.nights):{error:'No se encontró la estadía.'};
+      const preview=document.getElementById('room-extension-preview'),error=document.getElementById('room-extension-error'),submit=document.getElementById('room-extension-submit');
+      if(preview)preview.textContent=quote.error?'Revise la cantidad y las fechas para continuar.':'Salida actual: '+datePretty(stay.departure)+' · Nueva salida: '+datePretty(quote.newDeparture)+' · Cargo: '+money(quote.total)+' ('+quote.nights+' noches × '+money(stay.roomRate)+')';
+      if(error){error.textContent=quote.error||'';error.classList.toggle('hidden',!quote.error);}
+      if(submit)submit.disabled=Boolean(quote.error);
     }
     const personForm=document.getElementById('room-person-form');
     if(personForm){
@@ -1613,6 +1808,22 @@
   const success=appendExtra({...f,method:'efectivo',stayId:stay.id},product);
   if(success){render();toast('Consumo cargado a Hab. '+(roomOf(stay.roomId)?.number||'—')+': '+product.name+'. No se ha cobrado aún.');}
 }
+  function processBreakfast(){
+    const f=readForm('room-breakfast-form'),stay=stayOf(f.stayId),quantity=Number(f.quantity);
+    if(!stay||stay.status!=='activa'){toast('La habitación ya no tiene una estadía activa.','error');return;}
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>100){toast('Indique entre 1 y 100 desayunos.','error');return;}
+    const amount=asMoney(quantity*BREAKFAST_EXTRA_PRICE);
+    if(!window.confirm('¿Agregar '+quantity+' desayuno(s) a '+money(BREAKFAST_EXTRA_PRICE)+' cada uno? Se cargarán '+money(amount)+' a la habitación.'))return;
+    db.extras.push({
+      id:uid('extra'),stayId:stay.id,productId:'servicio-desayuno-adicional',
+      productName:'Desayuno adicional',category:'otros',quantity,price:BREAKFAST_EXTRA_PRICE,
+      method:'pendiente',reference:'',shift:f.shift==='noche'?'noche':'dia',
+      operator:String(f.operator||'').trim(),createdAt:new Date().toISOString(),
+      cashTendered:0,cashChange:0,changeStatus:'no_aplica',changeDeliveredAt:null,changeDeliveredShift:null
+    });
+    persist();render();
+    toast(quantity+' desayuno(s) agregados a Hab. '+(roomOf(stay.roomId)?.number||'—')+' por '+money(amount)+'. Cargo pendiente de cobro.');
+  }
   function processAdditionalPerson(){
   const f=readForm('room-person-form'),stay=stayOf(f.stayId);
   if(!stay||stay.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
@@ -1633,21 +1844,23 @@
   persist();render();toast('Persona adicional registrada. Cargo a la habitación: '+money(amount)+'.');
 }
   function processExtendStay(){
-  const f=readForm('room-extension-form'),stay=stayOf(f.stayId);
-  if(!stay||stay.status!=='activa'){toast('La estadía no está activa.','error');return;}
-  const newDeparture=addIsoDays(stay.departure,1),problem=extensionBlocker(stay,newDeparture);
-  if(problem){toast(problem,'error');return;}
-  const price=Number(stay.roomRate),cents=moneyCents(price);
-  if(!Number.isFinite(price)||!Number.isSafeInteger(cents)||cents<=0||price>10000){toast('La tarifa de la habitación no es válida.','error');return;}
-  const oldDeparture=stay.departure;
-  if(!window.confirm('¿Extender la habitación '+(roomOf(stay.roomId)?.number||'—')+' del '+datePretty(oldDeparture)+' al '+datePretty(newDeparture)+'? Se añadirán '+money(price)+' al saldo.'))return;
-  const createdAt=new Date().toISOString();
-  if(!Array.isArray(stay.extensions))stay.extensions=[];
-  stay.extensions.push({id:uid('extension'),oldDeparture,newDeparture,addedNights:1,rate:asMoney(price),
-    amount:asMoney(price),operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt});
-  stay.departure=newDeparture;stay.roomTotal=asMoney(Number(stay.roomTotal||0)+price);
-  persist();render();toast('Nueva salida: '+datePretty(newDeparture)+'. Cargo agregado: '+money(price)+'.');
-}
+    const f=readForm('room-extension-form'),stay=stayOf(f.stayId);
+    if(!stay||stay.status!=='activa'){toast('La estadía no está activa.','error');return;}
+    const nights=f.nights===undefined?1:Number(f.nights);
+    const quote=extensionQuote(stay,nights);
+    if(quote.error){toast(quote.error,'error');return;}
+    const oldDeparture=stay.departure,room=roomOf(stay.roomId);
+    if(!window.confirm('¿Extender la habitación '+(room?.number||'—')+' por '+quote.nights+' noche(s), del '+datePretty(oldDeparture)+' al '+datePretty(quote.newDeparture)+'? Se añadirán '+money(quote.total)+' al saldo.'))return;
+    const stamp=new Date().toISOString();
+    if(!Array.isArray(stay.extensions))stay.extensions=[];
+    stay.extensions.push({id:uid('extension'),oldDeparture,newDeparture:quote.newDeparture,
+      addedNights:quote.nights,rate:asMoney(stay.roomRate),amount:quote.total,
+      operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt:stamp});
+    stay.departure=quote.newDeparture;
+    stay.roomTotal=asMoney(moneyCents(stay.roomTotal)/100+quote.total);
+    persist();render();
+    toast('Nueva salida: '+datePretty(quote.newDeparture)+'. '+quote.nights+' noche(s) y '+money(quote.total)+' agregados.');
+  }
   function finishStay(stay,stamp,operator){
   const room=roomOf(stay.roomId);
   if(room)room.status='limpieza';
@@ -1749,9 +1962,18 @@
     db.config.rates=next;persist();render();toast('Tarifas guardadas. Los registros anteriores conservan sus importes.');
   }
   function processProducts(){
-    const f=readForm('products-form');for(const p of db.products){const v=String(f['product-'+p.id]??'').trim();if(v!==''&&(!Number.isFinite(Number(v))||Number(v)<0)){toast('Revise el precio de '+p.name+'.','error');return;}}
-    for(const p of db.products){const v=String(f['product-'+p.id]??'').trim();p.price=v===''?null:asMoney(v);}
-    persist();render();toast('Catálogo de productos actualizado.');
+    const f=readForm('products-form'),draft=[],codes=new Set();
+    for(const p of db.products){
+      const raw=String(f['product-'+p.id]??'').trim();
+      if(raw!==''&&(!Number.isFinite(Number(raw))||Number(raw)<0)){toast('Revise el precio de '+p.name+'.','error');return;}
+      const barcode=normalizeBarcode(f['barcode-'+p.id]===undefined?p.barcode:f['barcode-'+p.id]);
+      if(!barcodeValid(barcode)){toast('Código de barras inválido para '+p.name+'. Use entre 3 y 64 caracteres, sin espacios.','error');return;}
+      if(barcode&&codes.has(barcode)){toast('Los códigos de barras no pueden repetirse. Revise '+p.name+'.','error');return;}
+      if(barcode)codes.add(barcode);
+      draft.push({p,price:raw===''?null:asMoney(raw),barcode});
+    }
+    for(const row of draft){row.p.price=row.price;row.p.barcode=row.barcode;}
+    persist();render();toast('Precios y códigos de barras guardados.');
   }
   function processInventory(){
     const f=readForm('room-inventory-form'),proposed=[];
@@ -1766,10 +1988,12 @@
     persist();render();toast('Inventario de habitaciones actualizado.');
   }
   function processNewProduct(){
-    const f=readForm('new-product-form'),name=String(f.name||'').trim(),price=String(f.price??'').trim();
+    const f=readForm('new-product-form'),name=String(f.name||'').trim(),price=String(f.price??'').trim(),barcode=normalizeBarcode(f.barcode);
     if(!name||name.length>60||db.products.some(p=>p.name.toLowerCase()===name.toLowerCase())){toast('Use un nombre de producto único, de hasta 60 caracteres.','error');return;}
     if(price!==''&&(!Number.isFinite(Number(price))||Number(price)<0)){toast('Ingrese un precio válido o deje el campo vacío.','error');return;}
-    db.products.push({id:uid('product'),name,category:CATEGORIES[f.category]?f.category:'otros',price:price===''?null:asMoney(price),stock:null});persist();render();toast('Producto agregado al catálogo.');
+    if(!barcodeValid(barcode)||barcode&&productByBarcode(barcode)){toast('Ingrese un código de barras válido y no repetido.','error');return;}
+    db.products.push({id:uid('product'),name,category:CATEGORIES[f.category]?f.category:'otros',price:price===''?null:asMoney(price),barcode,stock:null});
+    persist();render();toast('Producto agregado al catálogo.');
   }
   function processNewRoom(){
     const f=readForm('new-room-form'),number=String(f.number||'').trim().toUpperCase();if(!/^[A-Z0-9-]{1,8}$/.test(number)){toast('El número admite letras, cifras y guiones (máximo 8).','error');return;}
@@ -1788,6 +2012,7 @@
     const nav=e.target.closest('[data-view]');if(nav){navigate(nav.dataset.view);return;}
     if(e.target.closest('#menu-toggle')){document.getElementById('sidebar').classList.toggle('open');return;}
     if(e.target.closest('#dismiss-notice')){document.querySelector('.notice')?.remove();return;}
+    if(e.target.id==='room-barcode-overlay'){closeRoomBarcodeScanner();return;}
     if(e.target.classList?.contains('reservation-guest-overlay')){closeReservationGuestSearch();return;}
     const el=e.target.closest('[data-action]');if(!el)return;
     const action=el.dataset.action,id=el.dataset.id;
@@ -1823,6 +2048,16 @@
       case 'go-varios':navigate('varios');break;
       case 'go-caja':navigate('caja');break;
       case 'export-cash':exportCash();break;
+      case 'open-room-barcode-scanner':openRoomBarcodeScanner();break;
+      case 'close-room-barcode-scanner':closeRoomBarcodeScanner();break;
+      case 'start-room-barcode-camera':startRoomBarcodeCamera();break;
+      case 'stop-room-barcode-camera':roomBarcodeToken++;stopRoomBarcodeCamera();roomBarcodeStatus('Cámara detenida. Puede ingresar el código manualmente.');break;
+      case 'toggle-room-extra-search':{
+        const finder=document.getElementById('room-extra-search');
+        if(finder){finder.classList.toggle('hidden');if(!finder.classList.contains('hidden'))document.getElementById('room-extra-search-input')?.focus();}
+        break;
+      }
+      case 'pick-room-extra-product':selectRoomExtraProduct(id);break;
       case 'pick-product':{const sel=document.querySelector('#extra-form [name=productId]');if(sel){sel.value=id;updatePricing();sel.closest('.panel')?.scrollIntoView({behavior:'smooth',block:'center'});}break;}
       case 'lookup-guest':lookupGuest(el.dataset.scope);break;
       case 'open-reservation-guest-search':openReservationGuestSearch();break;
@@ -1944,6 +2179,11 @@
   },true);
   document.addEventListener('input',e=>{
     const target=e.target;
+    if(target.id==='room-extra-search-input'){
+      const results=document.getElementById('room-extra-search-results');
+      if(results)results.innerHTML=renderRoomProductMatches(target.value);
+      return;
+    }
     if(target.id==='reservation-guest-search-input'){
       ui.reservationGuestSearchQuery=target.value;
       const results=document.getElementById('reservation-guest-results');
@@ -1963,7 +2203,7 @@
       syncCheckinVariosForm();updatePricing();
     }
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
-    if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
+    if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-breakfast-form','#room-extension-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
   });
   document.addEventListener('change',e=>{
     const el=e.target;
@@ -2004,11 +2244,11 @@
       updatePricing();return;
     }
     if(el.closest('#payment-form')&&el.name==='method')document.getElementById('payment-reference')?.classList.toggle('hidden',el.value!=='transferencia');
-    if(['#payment-form','#extra-form','#manual-extra-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>el.closest(s)))updatePricing();
+    if(['#payment-form','#extra-form','#manual-extra-form','#room-extra-form','#room-breakfast-form','#room-extension-form','#room-person-form','#finalize-form'].some(s=>el.closest(s)))updatePricing();
   });
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
-    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
+    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-barcode-form':()=>applyRoomBarcode(document.getElementById('room-barcode-manual')?.value),'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
     if(handlers[id]){e.preventDefault();handlers[id]();}
   });
   document.addEventListener('reset',e=>{
@@ -2019,6 +2259,7 @@
   });
   
   document.addEventListener('keydown',e=>{
+    if(document.getElementById('room-barcode-overlay')&&e.key==='Escape'){e.preventDefault();closeRoomBarcodeScanner();return;}
     if(ui.reservationGuestSearchOpen){
       if(e.key==='Escape'){e.preventDefault();closeReservationGuestSearch();return;}
       if(e.key==='Enter'&&e.target.id==='reservation-guest-search-input'){e.preventDefault();return;}

@@ -36,6 +36,7 @@ jobs:
           node tests/rooms-overview.test.cjs
           node tests/room-date-housekeeping.test.cjs
           node tests/reservas-buscador.test.cjs
+          node tests/cuenta-habitacion-v018.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos

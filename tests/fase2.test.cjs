@@ -89,7 +89,7 @@ success('Extender un día sin conflicto añade exactamente la tarifa de la estad
 });
 success('La ficha presenta cinco operaciones y el desglose de acompañantes',()=>{
  const html=t.renderRoomAccount(d.rooms.find(r=>r.id===s.roomId),s);
- for(const word of ['Agregar varios','Agregar persona adicional','Extender un día','Cierre de cuenta final',
+ for(const word of ['Agregar varios','Agregar persona adicional','Extender estadía','Cierre de cuenta final',
  'Historial de movimientos','ACOMPAÑANTE FICTICIO','137,50'])assert(html.includes(word),'Falta '+word);
 });
 success('Historial incluye todos los cargos sin duplicar la noche extendida',()=>{

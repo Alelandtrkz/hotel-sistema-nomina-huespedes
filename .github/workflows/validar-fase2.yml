@@ -37,3 +37,5 @@ jobs:
         run: node tests/room-date-housekeeping.test.cjs
       - name: Comprobar búsqueda de huéspedes en Reservas
         run: node tests/reservas-buscador.test.cjs
+      - name: Verificar cuenta compacta, desayunos y escaneo de varios
+        run: node tests/cuenta-habitacion-v018.test.cjs

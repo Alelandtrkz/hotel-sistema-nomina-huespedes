@@ -1,3 +1,33 @@
+# Hotel Unicornio v0.18 — Cuenta compacta, desayunos y escaneo de productos
+
+La ventana **Cuenta por habitación** se presenta ahora más compacta. Los paneles **Datos del huésped**, **Desglose de la cuenta**, **Resumen de importes** y **Registrar abono parcial o total** se pliegan individualmente con elementos HTML accesibles `details/summary`; se conserva el saldo siempre visible y no se modifica el cálculo ni los pagos previos.
+
+## Varios: búsqueda y código de barras
+
+- **Agregar varios a la habitación** tiene dos botones: **Buscar producto** (por nombre, categoría o código) y **Escanear código**. La selección rellena el campo Producto sin cobrar todavía; el recepcionista ajusta cantidad y confirma el cargo.
+- **Escanear código** abre un diálogo con botón **Activar cámara**. Solo al pulsarlo se solicita permiso al navegador. Se utiliza `html5-qrcode@2.3.8` fijado a esa versión y cargado a demanda desde jsDelivr; permite leer EAN/UPC/Code128 desde cámaras móviles compatibles. La imagen se procesa en el navegador y no se envía a Supabase. La cámara se detiene al cerrar, seleccionar o navegar.
+- Existe campo **Código de barras manual** para navegadores sin cámara o sin permisos. **No se inventa ninguna asociación:** en **Tarifas y ajustes → Catálogo de productos**, cada producto dispone de un código opcional único, editable junto con su precio. Se puede asociar también al crear un producto nuevo.
+- Al escanear un código sin producto vinculado o sin precio, se informa al recepcionista; no se genera cargo ni venta por error.
+- La cámara requiere HTTPS, permiso del usuario, un navegador compatible y acceso a la biblioteca externa al activarla. Se recomienda probar Android/iOS en equipos reales; el formulario manual funciona como alternativa.
+
+## Desayunos adicionales
+
+- Nuevo panel **Agregar desayunos** en cada habitación activa. La tarifa adicional es **USD 5,00 por unidad**, de 1 a 100 unidades por operación.
+- Por ejemplo, 3 desayunos generan **USD 15,00** en la cuenta. Se registra como un `extra` con estado pendiente y aparece en el desglose, historial, saldos y reportes de caja; **no es cobro** hasta que se registre el abono.
+- No altera tarifas ya contratadas **con desayuno**. Si la estancia lo incluye, aparece una advertencia para evitar cargos duplicados.
+- No consume inventario de bebidas o alimentos ni añade productos falsos al catálogo.
+
+## Extender varias noches
+
+- **Extender estadía** permite ingresar de **1 a 90 noches** por operación, sin superar 365 noches totales por estadía.
+- Se conserva la **tarifa histórica por noche** de la habitación: por ejemplo, 3 noches a USD 20 suman **USD 60**. Se calcula la nueva fecha de salida, se revisa que **ninguna** noche nueva coincida con otra reserva o estadía de la habitación y se muestra el monto para confirmar.
+- El cambio se registra como **un único movimiento** con `addedNights`, tarifa, total y fechas; compatible con las extensiones históricas de una noche.
+- Cambiar la cantidad actualiza el resumen antes de guardar; si hay conflicto, no se actualizan fechas ni importes.
+
+**Pruebas:** `tests/cuenta-habitacion-v018.test.cjs` cubre interfaz plegable, producto por búsqueda/código, validaciones, desayunos y extensiones. Se conserva la suite de fases 1 y 2, reservas, multi-habitación, fechas, camarería y autenticación. GitHub Actions bloquea Pages si falla alguna. No hay migraciones SQL ni se realizaron escrituras en los huéspedes existentes durante el desarrollo.
+
+---
+
 # Hotel Unicornio v0.17 — Crear reserva plegable
 
 En **Reservas y próximas llegadas**, el formulario **Crear reserva** se presenta contraído inicialmente para mostrar la **Nómina de reservas** mucho más arriba y reducir el desplazamiento vertical de recepción. La barra «Crear reserva» es totalmente pulsable y accesible con el teclado; el texto alterna entre **Mostrar formulario** y **Ocultar formulario**.
