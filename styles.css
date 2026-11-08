@@ -626,3 +626,45 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
  .compact-person-name{margin-bottom:0}
  .extension-dates-line>strong{min-width:90px}
 }
+
+
+/* v0.20 · Persona adicional sin nombre; responsable breve y turno fechado de El Coca */
+.compact-person-fields{
+ display:grid;
+ grid-template-columns:minmax(160px,1fr) minmax(140px,166px) minmax(150px,190px) minmax(205px,1fr);
+ align-items:end;
+ gap:10px;
+}
+.compact-person-fields>.field{min-width:0;margin:0}
+.compact-person-fields>.field input,
+.compact-person-fields>.field select{min-width:0;width:100%}
+.compact-person-fields #room-person-operator{width:100%}
+.compact-person-fields .compact-quantity-stepper{min-width:0}
+.compact-operation-row{grid-template-columns:minmax(145px,170px) minmax(155px,205px) minmax(215px,1fr)}
+.reception-auto-shift{
+ min-height:60px;
+ white-space:normal;
+ padding:8px 12px;
+ gap:3px;
+ justify-content:center;
+}
+.reception-auto-shift-current{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 11px}
+.reception-auto-shift-current strong{font-size:13px;line-height:1.25;color:#285c40}
+.reception-auto-shift-current time{font-size:11px;font-weight:700;color:#325c47;white-space:nowrap}
+.reception-auto-shift small{font-size:9px;line-height:1.3;color:#6c8174}
+@media(max-width:920px){
+ .compact-person-fields{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+ .compact-person-fields>.reception-auto-shift{min-height:59px}
+}
+@media(max-width:760px){
+ .compact-operation-row{grid-template-columns:minmax(145px,170px) minmax(0,1fr);gap:10px}
+ .compact-operation-row>.reception-auto-shift{min-height:43px;grid-column:1/-1;display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:5px 11px}
+ .compact-operation-row>.reception-auto-shift small{margin-left:auto}
+}
+@media(max-width:460px){
+ .compact-operation-row{grid-template-columns:minmax(127px,165px) minmax(0,1fr);gap:8px}
+ .compact-person-fields{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+ .compact-person-fields>.reception-auto-shift{grid-column:1/-1;min-height:45px;display:flex;flex-direction:row;align-items:center;gap:6px 10px}
+ .compact-person-fields>.reception-auto-shift small{margin-left:auto}
+ .reception-auto-shift-current time{font-size:10px}
+}
