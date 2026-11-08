@@ -384,3 +384,49 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
   .rooms-overview button.rooms-kpi{transition:none}
   .rooms-overview button.rooms-kpi:hover{transform:none}
 }
+
+/* v0.15 · Consulta de ocupación por fecha y botón de impresión de camarería */
+#room-map .room-filters-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.room-filter-selects{display:flex;align-items:center;gap:10px;flex:1 1 330px;min-width:0}
+.room-filter-selects select{min-width:0;max-width:240px;flex:0 1 205px}
+.room-filter-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;margin-left:auto;flex:0 0 auto}
+.room-filter-actions>.btn{white-space:nowrap;min-height:38px}
+.room-date-panel{background:#f5faf7;border-bottom:1px solid #dbeade;padding:13px 20px}
+.room-date-choice{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.room-date-choice label{font-size:12px;font-weight:750;color:#315940}
+.room-date-choice input[type=date]{min-width:174px;max-width:205px;padding:8px 10px;border:1px solid #cddfcf;border-radius:7px;background:#fff;font-size:13px;min-height:37px}
+.room-date-choice .btn{min-height:34px;padding:7px 11px}
+.room-date-note{margin-top:9px;font-size:11px;line-height:1.6;color:#597b62}
+.room-date-note strong{color:#285d43}
+.room-tile.room-forecast{min-height:178px;display:flex;flex-direction:column;gap:6px}
+.room-tile.room-forecast .room-type{margin:0;font-size:11px}
+.room-forecast-range{font-size:10.5px;color:#5b7868;line-height:1.45;min-height:30px}
+.room-tile.reserved-planned{background:#f2f6ff;border-color:#b9cce5}
+.room-badge.reserved-planned{background:#dfeaff;color:#285c91}
+.room-tile.room-forecast .room-badges{margin-top:auto}
+.room-forecast-flags{display:flex;gap:5px;flex-wrap:wrap}
+.room-forecast-flags small{display:inline-block;border-radius:5px;font-size:9px;padding:3px 6px;background:#f3edcf;color:#766128;font-weight:700}
+.room-date-detail{margin-top:15px}
+.room-date-detail-body{display:grid;gap:5px;padding:15px 20px;color:#506b5b;font-size:12px}
+.room-date-detail-body strong{color:#2e5441}
+.room-date-detail-body small{color:#7a9080;font-size:11px;margin-top:7px}
+@media(max-width:900px){
+ .room-filter-selects{flex:1 1 auto}
+ .room-filter-actions{flex:1 1 auto;justify-content:flex-end}
+}
+@media(max-width:640px){
+ #room-map .room-filters-bar{padding:12px;gap:9px}
+ .room-filter-selects{width:100%;flex:1 1 100%;gap:8px}
+ .room-filter-selects select{flex:1 1 50%;max-width:none;font-size:11px}
+ .room-filter-actions{display:flex;width:100%;flex:1 1 100%;gap:7px}
+ .room-filter-actions>.btn{flex:1;min-width:0;white-space:normal;padding:7px;font-size:10.5px;line-height:1.25}
+ .room-date-panel{padding:12px}
+ .room-date-choice{gap:6px}
+ .room-date-choice label{width:100%}
+ .room-date-choice input[type=date]{flex:1 1 100%;max-width:none}
+ .room-date-choice .btn{flex:1 1 auto}
+ .room-tile.room-forecast{min-height:166px}
+}
+@media(max-width:355px){
+ .room-filter-actions>.btn{font-size:10px;padding:6px 5px}
+}
