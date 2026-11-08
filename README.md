@@ -1,3 +1,24 @@
+# Hotel Unicornio v0.19 — Controles compactos y turno automático en cuentas de habitación
+
+En **Cuenta por habitación**, tres operaciones se presentan de forma más compacta:
+
+- **Agregar desayunos**: sustituye el campo ancho de cantidad por un control compacto de número con botones **− y +**. Los iconos son SVG de **Lucide Minus / Plus**, sin dependencia de red; se puede introducir directamente una cantidad y el máximo sigue siendo 100. Se conserva la tarifa adicional de **USD 5 por desayuno** y el cargo pendiente.
+- **Agregar persona adicional**: el nombre se introduce directamente por su *placeholder* y mantiene un nombre accesible para lectores de pantalla. Las **noches a cobrar** se eligen con los mismos botones −/+ (máximo de noches de la estadía). Categoría, encargado y cálculo del cargo se conservan.
+- **Extender estadía**: recupera el recuadro visible con **Salida actual, Nueva salida e Importe**. Debajo aparece **Noches a extender**, con botones −/+ para elegir entre 1 y 90 noches, el encargado y el turno automático. La vista previa de la nueva fecha y el precio se actualiza sin reemplazar el recuadro ni plegar el formulario. Se mantiene la comprobación de reservas superpuestas para **todo** el período.
+
+### Turno de recepción automático
+
+Los tres registros (**desayunos, persona adicional y extensión**) ya no requieren escoger turno manualmente. Se calcula **al guardar** con la zona horaria `America/Guayaquil`, independientemente de la zona horaria configurada en el móvil.
+
+- **Día**: desde **07:30** inclusive hasta **19:30** exclusive.
+- **Noche**: desde **19:30** hasta **07:29** del día siguiente.
+
+La operación muestra un indicador informativo **Turno automático** en lugar de un selector y se guarda el turno real calculado al confirmar (no se acepta un turno alterado del formulario). Otros módulos, como cobros o caja, mantienen su flujo actual sin cambios.
+
+**Seguridad e integridad:** no se cambian tarifas previas, validaciones de número de noches, balances, reservas, huéspedes ni esquemas de Supabase. Las pruebas automatizadas en `tests/cuenta-compacta-v019.test.cjs` cubren la frontera de las 07:30 y 19:30, la elección ±, el diseño accesible y las cantidades/turnos registrados. Las suites anteriores continúan ejecutándose antes del despliegue a GitHub Pages.
+
+---
+
 # Hotel Unicornio v0.18 — Cuenta compacta, desayunos y escaneo de productos
 
 La ventana **Cuenta por habitación** se presenta ahora más compacta. Los paneles **Datos del huésped**, **Desglose de la cuenta**, **Resumen de importes** y **Registrar abono parcial o total** se pliegan individualmente con elementos HTML accesibles `details/summary`; se conserva el saldo siempre visible y no se modifica el cálculo ni los pagos previos.
