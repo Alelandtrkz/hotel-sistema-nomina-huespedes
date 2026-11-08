@@ -1,3 +1,20 @@
+# Hotel Unicornio v0.10 — Pago verificado y cédula/RUC correctamente validados
+
+En **Registro / ingreso**, el método predeterminado pasa a ser **Efectivo**. El recepcionista no puede registrar el huésped sin confirmar que realmente recibió dinero o verificó la transferencia. Para efectivo debe escribir la cantidad físicamente entregada; el vuelto se calcula como antes. En transferencia, debe registrar la referencia bancaria y confirmar el abono acreditado. Un anticipo previo que cubra por completo la cuenta también se considera pagado.
+
+**Excepción «Por cobrar»:** al seleccionarla aparece una advertencia específica. Se exige una **primera confirmación** mediante casilla de verificación. Al presionar «Solicitar ingreso por cobrar» se presenta una **segunda confirmación** con los números de habitación y el importe total pendiente. Si se cancela, **no se registra** ninguna habitación, pago, consumo ni huésped nuevo. Al autorizar se guarda `creditApproval` (fecha, turno, importe, modo `doble_confirmacion`) por habitación y queda un evento en su historial; el importe sigue pendiente y no se registra efectivo ni transferencia. Cambiar el método de pago desmarca las verificaciones anteriores.
+
+**Identificaciones personales ecuatorianas:**
+- Se admiten **cédulas de 10 dígitos** o **RUC de persona natural de 13 dígitos que terminan en `001`**.
+- La cédula base debe superar el control de provincia, tercer dígito y **dígito verificador módulo 10**. También se reconoce la serie `30` con tercer dígito `4` o `5` de inscripciones consulares.
+- El buscador, las fichas de huéspedes, las reservas y el registro de ingreso usan los mismos controles. Un RUC personal terminado en `001` y su cédula base coinciden en **una sola ficha**, sin duplicar al huésped ni alterar el documento que ya estaba registrado.
+- Un **RUC societario** no es una cédula de una persona natural: se maneja en los campos de facturación, sin tratarlo como identificación personal. El SRI advierte que ciertos RUC societarios válidos no deben ser rechazados por algoritmos tradicionales de verificación; la validación personal aquí no equivale a un cotejo oficial con SRI/Registro Civil.
+- No se cambian retroactivamente identificaciones cargadas anteriormente. Al volver a ingresar un huésped con documento de estructura inválida, recepción deberá comprobar/corregir el dato antes del ingreso.
+
+La versión sigue siendo una **beta** con guardado de estado en Supabase y políticas de acceso. Una casilla de confirmación es un control operativo: todavía se requiere un backend transaccional y permisos/auditoría de caja para utilizarla en producción. Todas las pruebas son sintéticas y no escriben datos de huéspedes reales.
+
+---
+
 # Hotel Unicornio v0.9 — Varios al ingreso y descuento solo por transferencia
 
 **Cambios de recepción:** el precio especial **solo se habilita con la modalidad «Transferencia · precio con descuento»**. Las demás opciones disponibles son «Por cobrar», «Efectivo» y «Transferencia» con tarifa normal. Se rechazan las antiguas modalidades de descuento en efectivo o por cobrar, incluso si un navegador intenta enviarlas manualmente.
