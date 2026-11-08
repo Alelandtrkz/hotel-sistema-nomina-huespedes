@@ -226,14 +226,14 @@
       changeDeliveredAt:details.status==='dado'?stamp:null,
       changeDeliveredShift:details.status==='dado'?shift:null};
   }
-  function cashChangeFields(prefix){
+  function cashChangeFields(prefix,data={}){
     return `<div class="cash-tender-zone section-gap" id="${prefix}-cash-zone">
       <div class="form-grid cols-2">
-        ${field('Efectivo entregado por el huésped (USD)','cashTendered','',{id:prefix+'-cashTendered',type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
+        ${field('Efectivo entregado por el huésped (USD)','cashTendered',data.cashTendered??'',{id:prefix+'-cashTendered',type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
         <div class="field"><label>Vuelto calculado</label><div class="cash-change-preview" id="${prefix}-change-preview">${money(0)}</div></div>
       </div>
       <div class="cash-choice-wrap hidden" id="${prefix}-change-choice"><div class="mini-caption">¿Qué sucedió con el vuelto?</div>
-        <div class="cash-choice-items"><label><input type="radio" name="changeStatus" value="dado"><span>Vuelto dado</span></label><label><input type="radio" name="changeStatus" value="pendiente"><span>Vuelto no dado · pendiente</span></label></div>
+        <div class="cash-choice-items"><label><input type="radio" name="changeStatus" value="dado" ${data.changeStatus==='dado'?'checked':''}><span>Vuelto dado</span></label><label><input type="radio" name="changeStatus" value="pendiente" ${data.changeStatus==='pendiente'?'checked':''}><span>Vuelto no dado · pendiente</span></label></div>
         <p class="mini-caption">Si queda pendiente, se registra como dinero que el hotel debe entregar al cliente.</p>
       </div>
     </div>`;
@@ -773,7 +773,7 @@
           ${select('Turno de recepción','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
           <div class="field"><label>Valor a cobrar en el ingreso</label><div class="readonly-info checkin-auto-pay" id="checkin-auto-payment">${money(initialPayment)}</div><div class="field-hint">Se calcula automáticamente; no puede modificarse.</div></div>
           <div class="field ${choice?.method==='transferencia'?'':'hidden'}" id="transfer-field"><label for="transferCode">Código de transferencia *</label><input name="transferCode" id="transferCode" placeholder="Referencia bancaria" value="${esc(d.transferCode||'')}"></div>
-        </div>${cashChangeFields('checkin')}
+        </div>${cashChangeFields('checkin',d)}
         <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'Por cobrar: no se registra dinero recibido y el importe queda como saldo pendiente.':'Pago completo: se aplica automáticamente el saldo de todas las habitaciones, descontando cualquier anticipo registrado.'}</div>
         <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">El descuento solo se permite por transferencia, sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
         <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
@@ -1555,7 +1555,7 @@
     else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();render();}
     else if(id==='guest-form'){e.preventDefault();ui.lookup.huespedes='';ui.lookupMessage.huespedes='';ui.lookupResult.huespedes=false;render();}
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ui.selectedHistoryStayId){ui.selectedHistoryStayId=null;render();return;}if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
+  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='checkin-varios-search'){e.preventDefault();return;}if(e.key==='Escape'&&ui.selectedHistoryStayId){ui.selectedHistoryStayId=null;render();return;}if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
   document.getElementById('year').textContent=String(new Date().getFullYear());
   document.getElementById('current-date').textContent=new Intl.DateTimeFormat('es-EC',{weekday:'short',day:'numeric',month:'long',year:'numeric'}).format(new Date());
   if(window.hotelCloud?.ready){
