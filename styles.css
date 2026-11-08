@@ -571,3 +571,58 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
  .barcode-settings-row{grid-template-columns:minmax(0,1fr) minmax(68px,85px)}
  .barcode-settings-row .field:last-child{grid-column:1/-1}
 }
+
+
+/* v0.19 · Controles compactos con iconos Lucide y turnos automáticos */
+.compact-operation-body{padding:13px 16px 15px}
+.compact-operation-body .section-gap{margin-top:13px}
+.compact-operation-row{display:grid;grid-template-columns:170px minmax(155px,1fr) minmax(152px,auto);gap:12px;align-items:end}
+.compact-operation-row>.field{min-width:0;margin:0}
+.compact-operation-row .field input{min-width:0}
+.compact-quantity-field{min-width:0}
+.compact-quantity-field>label{display:block;font-size:11px;font-weight:750;color:#365b46;margin-bottom:7px}
+.compact-quantity-stepper{display:flex;align-items:center;justify-content:space-between;gap:0;border:1px solid #d2e0d6;border-radius:10px;background:#f6f9f7;min-height:43px;overflow:hidden;width:100%}
+.compact-quantity-stepper>button{border:0;background:transparent;display:flex;justify-content:center;align-items:center;flex:0 0 41px;color:#176b49;min-height:42px;cursor:pointer}
+.compact-quantity-stepper>button:hover{background:#dff0e5}
+.compact-quantity-stepper>button:focus-visible{outline:2px solid #1e865c;outline-offset:-3px;background:#e4f4e9}
+.compact-quantity-stepper>button:active{background:#cce6d4}
+.compact-quantity-stepper>button svg{width:18px;height:18px;pointer-events:none}
+.compact-quantity-stepper>input[type=number]{border:0;outline:0;min-width:0;width:100%;height:42px;min-height:42px;padding:0 3px;text-align:center;font-size:15px;font-weight:800;background:transparent;color:#254b34;border-radius:0;appearance:textfield;-moz-appearance:textfield}
+.compact-quantity-stepper>input[type=number]::-webkit-inner-spin-button,
+.compact-quantity-stepper>input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.compact-quantity-stepper>input:focus{background:#e9f5ed}
+.reception-auto-shift{min-height:43px;border-radius:9px;background:#f3f8f4;border:1px solid #dceadf;display:flex;gap:2px;align-items:flex-start;justify-content:center;flex-direction:column;padding:6px 11px;color:#345c44;white-space:nowrap}
+.reception-auto-shift span{font-size:9.5px;color:#6d8774}
+.reception-auto-shift strong{font-size:12px}
+.reception-auto-shift small{font-size:9px;color:#718879}
+.compact-charge-preview{padding:10px 12px;margin:12px 0 4px;min-height:41px}
+.compact-person-main{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;align-items:end;margin-bottom:12px}
+.compact-person-main>.field{min-width:0;margin:0}
+.compact-person-name{align-self:end}
+.compact-person-name>input{width:100%;min-width:0}
+.extension-dates-card{display:grid;gap:6px;padding:13px 15px;margin:0 0 15px!important;border-radius:10px}
+.extension-dates-line{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;font-size:12px;line-height:1.5}
+.extension-dates-line>strong{color:#2d5e43;font-size:12px;min-width:99px}
+.extension-dates-line>span{color:#2d5a43}
+.extension-dates-line>span>strong{color:#23623f}
+.extension-dates-line small{font-size:10px;color:#66826f}
+.compact-extension-controls{margin-top:2px}
+.compact-operation-body .phase2-warning{margin-top:11px}
+@media(max-width:760px){
+ .compact-operation-body{padding:12px}
+ .compact-operation-row{grid-template-columns:160px minmax(0,1fr);gap:10px}
+ .compact-operation-row>.reception-auto-shift{grid-column:1/-1;min-height:34px;flex-direction:row;justify-content:flex-start;align-items:center;gap:7px}
+ .compact-operation-row>.reception-auto-shift small{margin-left:auto}
+ .compact-person-main{grid-template-columns:1fr 1fr;gap:10px}
+}
+@media(max-width:460px){
+ .compact-operation-row{grid-template-columns:minmax(132px,165px) minmax(0,1fr);gap:8px}
+ .compact-operation-row>.field label{font-size:10px}
+ .compact-quantity-field>label{font-size:10px}
+ .compact-quantity-stepper>button{flex-basis:34px}
+ .compact-quantity-stepper>button svg{width:17px;height:17px}
+ .compact-operation-row>.reception-auto-shift small{font-size:8.5px}
+ .compact-person-main{grid-template-columns:1fr}
+ .compact-person-name{margin-bottom:0}
+ .extension-dates-line>strong{min-width:90px}
+}
