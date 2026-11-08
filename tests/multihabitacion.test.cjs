@@ -38,7 +38,7 @@ function wrapForm(data){return {data,elements:{namedItem(){return null;}}};}
 function setup(extraRooms=[{key:'batch1'}]){
  const db=t.defaults();
  t.setDB(db);
- t.setUI({...t.getUI(),checkinExtraRooms:extraRooms,checkinRowSeq:extraRooms.length,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',selectedRoomId:null,prefillBookingId:null,
+ t.setUI({...t.getUI(),checkinExtraRooms:extraRooms,checkinRowSeq:extraRooms.length,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,selectedRoomId:null,prefillBookingId:null,
    checkinDraft:bookingForm(),view:'ingreso'});
  fake['checkin-form']=wrapForm(bookingForm() );
  return db;
