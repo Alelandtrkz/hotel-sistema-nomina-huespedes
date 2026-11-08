@@ -310,7 +310,7 @@
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula o RUC personal','document',g.document,{required:true,placeholder:'10 dígitos o 13 terminados en 001',maxlength:13})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por cédula o RUC de persona natural</label><input id="lookup-${scope}" inputmode="numeric" maxlength="13" placeholder="10 dígitos o 13 terminados en 001" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
+  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
@@ -321,7 +321,7 @@
     document.getElementById('app-view').innerHTML=(views[ui.view]||renderDashboard)()+`<div class="footer-note">Hotel Unicornio · Puerto Francisco de Orellana · ${window.hotelCloud?.ready?'Versión beta sincronizada con Supabase':'Prototipo local'}</div>`;
     updatePricing();
   }
-  function navigate(view){if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
+  function navigate(view){if(view!=='reservas')ui.reservationGuestSearchOpen=false;if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
   function renderDashboard(){
     const available=db.rooms.filter(x=>x.status==='disponible').length,occ=db.rooms.filter(x=>x.status==='ocupada').length,dirty=db.rooms.filter(x=>x.status==='limpieza').length;
     const arrivals=db.reservations.filter(x=>x.arrival===today()&&['pendiente','confirmada'].includes(x.status));
@@ -1081,6 +1081,79 @@
         <div class="dashboard-notice"><strong>Facturación:</strong> esta versión registra la solicitud, pero no emite comprobantes electrónicos del SRI.</div>
       </div></aside></div>`;
   }
+
+  // El buscador de reservas consulta únicamente db.guests, cargado tras autenticar en Supabase.
+  const normalizeReservationGuestText=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+  function reservationGuestMatches(query){
+    const q=normalizeReservationGuestText(query);
+    if(q.length<2)return [];
+    return db.guests.filter(g=>[guestName(g),g.document,g.phone].some(v=>normalizeReservationGuestText(v).includes(q)))
+      .sort((a,b)=>{
+        const rank=g=>normalizeReservationGuestText(g.document).startsWith(q)?0:normalizeReservationGuestText(guestName(g)).startsWith(q)?1:2;
+        return rank(a)-rank(b)||guestName(a).localeCompare(guestName(b),'es');
+      }).slice(0,15);
+  }
+  function reservationGuestField(d){
+    return `<div class="field reservation-guest-field">
+      <label for="reservation-document">Cédula o RUC personal (opcional)</label>
+      <div class="reservation-guest-input">
+        <input id="reservation-document" name="document" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="10 dígitos o 13 terminados en 001" value="${esc(d.document||'')}">
+        <button type="button" class="btn btn-secondary" id="reservation-search-button" data-action="open-reservation-guest-search" aria-haspopup="dialog" aria-controls="reservation-guest-dialog" title="Buscar un huésped registrado">Buscar</button>
+      </div>
+      <small class="reservation-guest-hint">Puede escribir la cédula o buscar un huésped existente.</small>
+    </div>`;
+  }
+  function renderReservationGuestResults(query){
+    if(normalizeReservationGuestText(query).length<2)return '<p class="mini-caption">Escriba al menos dos caracteres del nombre, la cédula o el teléfono.</p>';
+    const matches=reservationGuestMatches(query);
+    if(!matches.length)return '<p class="mini-caption">No se encontraron huéspedes. Cierre la búsqueda y complete los datos manualmente.</p>';
+    return matches.map(g=>`<button type="button" class="reservation-guest-result" data-action="select-reservation-guest" data-id="${esc(g.id)}">
+      <strong>${esc(guestName(g)||'Sin nombre')}</strong>
+      <span>${esc(g.document||'Sin documento')} · ${esc(g.phone||'Sin teléfono')}</span>
+    </button>`).join('');
+  }
+  function renderReservationGuestDialog(){
+    if(!ui.reservationGuestSearchOpen)return '';
+    const query=ui.reservationGuestSearchQuery||'';
+    return `<div class="reservation-guest-overlay" data-reservation-guest-overlay>
+      <section class="reservation-guest-dialog" id="reservation-guest-dialog" role="dialog" aria-modal="true" aria-labelledby="reservation-guest-title">
+        <header class="reservation-guest-header">
+          <div><h2 id="reservation-guest-title">Buscar huésped registrado</h2><p>Seleccione una ficha para completar la reserva automáticamente.</p></div>
+          <button type="button" class="reservation-guest-close" data-action="close-reservation-guest-search" aria-label="Cerrar búsqueda">×</button>
+        </header>
+        <div class="reservation-guest-body">
+          <label for="reservation-guest-search-input">Nombre, cédula/RUC o teléfono</label>
+          <input id="reservation-guest-search-input" type="search" autocomplete="off" placeholder="Escriba para buscar..." value="${esc(query)}" aria-controls="reservation-guest-results">
+          <div id="reservation-guest-results" class="reservation-guest-results" role="group" aria-label="Resultados de búsqueda">${renderReservationGuestResults(query)}</div>
+          <p class="reservation-guest-help">La búsqueda consulta huéspedes registrados. Si no aparece, ingrese los datos manualmente en Crear reserva.</p>
+        </div>
+      </section>
+    </div>`;
+  }
+  function openReservationGuestSearch(){
+    const form=document.getElementById('reservation-form');
+    if(form)ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};
+    ui.reservationGuestSearchQuery=String(ui.reservationDraft?.document||ui.reservationDraft?.name||'').trim();
+    ui.reservationGuestSearchOpen=true;
+    render();
+    document.getElementById('reservation-guest-search-input')?.focus();
+  }
+  function closeReservationGuestSearch(){
+    ui.reservationGuestSearchOpen=false;ui.reservationGuestSearchQuery='';
+    render();
+    document.getElementById('reservation-search-button')?.focus();
+  }
+  function selectReservationGuest(id){
+    const g=guestOf(id);if(!g)return;
+    const form=document.getElementById('reservation-form');
+    if(form)ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};
+    ui.reservationDraft={...initialReservationDraft(),...ui.reservationDraft,
+      name:guestName(g),phone:String(g.phone||''),document:String(g.document||'')};
+    ui.reservationGuestSearchOpen=false;ui.reservationGuestSearchQuery='';
+    render();
+    document.getElementById('reservation-document')?.focus();
+  }
+
   function renderReservations(){
     const d=ui.reservationDraft||(ui.reservationDraft=initialReservationDraft());
     const nights=getNightCount(d.arrival,d.departure),total=rate(d.type,d.breakfast)*nights;
@@ -1088,7 +1161,7 @@
     return head('Recepción / planificación','Reservas y próximas llegadas','Agende estancias, registre anticipos y convierta reservas en ingresos.',btn('Exportar nómina CSV','export-roster','btn-secondary'))+
       `<div class="two-col"><section class="panel"><div class="panel-head"><div><h2>Crear reserva</h2><p>Se solicita un anticipo del 50% para confirmar.</p></div></div><div class="panel-body"><form id="reservation-form"><div class="form-grid cols-2">
         ${field('Nombre completo','name',d.name,{required:true,placeholder:'Nombre del titular de la reserva'})}${field('Teléfono / WhatsApp','phone',d.phone,{required:true,placeholder:'09XXXXXXXX'})}
-        ${field('Cédula o RUC personal (opcional)','document',d.document,{maxlength:13,placeholder:'10 dígitos o 13 terminados en 001'})}${field('Fecha de llegada','arrival',d.arrival,{type:'date',required:true})}
+        ${reservationGuestField(d)}${field('Fecha de llegada','arrival',d.arrival,{type:'date',required:true})}
         ${field('Fecha de salida','departure',d.departure,{type:'date',required:true})}
         ${select('Tipo de habitación','type',TYPES.map(x=>[x,LABELS[x]]),d.type)}
         ${select('Desayuno','breakfast',[['sin','Sin desayuno'],['con','Con desayuno']],d.breakfast)}
@@ -1098,7 +1171,7 @@
         </div>${cashChangeFields('reservation')}<div class="summary-card section-gap"><div class="summary-pair"><span>Tarifa por noche</span><strong id="reservation-rate">${rateLabel(d.type,d.breakfast)}</strong></div><div class="summary-pair"><span>Duración</span><strong id="reservation-nights">${nights} noches</strong></div><div class="summary-pair total"><span>Total estimado</span><strong id="reservation-total">${rate(d.type,d.breakfast)===null?'Por definir':money(total)}</strong></div><div class="summary-pair"><span>Anticipo sugerido (50%)</span><strong id="reservation-deposit">${rate(d.type,d.breakfast)===null?'Por definir':money(total*.5)}</strong></div></div>
         <div class="mini-caption section-gap">Si no asigna habitación, la reserva no bloquea inventario específico. Sujeto a disponibilidad.</div><div class="form-actions"><button type="reset" class="btn btn-secondary">Limpiar</button><button type="submit" class="btn btn-primary">Guardar reserva</button></div></form></div></section>
         <aside class="panel"><div class="panel-head"><div><h2>Condiciones de reserva</h2><p>Información vigente del hotel</p></div></div><div class="panel-body"><div class="summary-pair"><span>Check-in</span><strong>Desde 12:00</strong></div><div class="summary-pair"><span>Check-out</span><strong>Hasta 14:00</strong></div><div class="summary-pair"><span>Anticipo</span><strong>50%</strong></div><div class="summary-pair"><span>Aviso para devolución</span><strong>24 h antes</strong></div><div class="separator"></div><p class="mini-caption">El anticipo no es reembolsable si el cliente no se presenta sin el aviso previsto. Las reservas sin pago suficiente quedan pendientes.</p><div class="dashboard-notice">Los saldos y anticipos se registran en el navegador de este dispositivo, no en una cuenta bancaria.</div></div></aside>
-      </div><section class="panel section-gap"><div class="panel-head"><div><h2>Nómina de reservas</h2><p>${arr.length} reservas registradas en este navegador</p></div></div>${arr.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Huésped</th><th>Llegada / salida</th><th>Habitación</th><th>Total / anticipo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${arr.map(b=>`<tr><td><strong>${esc(b.name)}</strong><br><span class="mini-caption">${esc(b.phone)}</span></td><td>${datePretty(b.arrival)}<br><span class="mini-caption">${datePretty(b.departure)}</span></td><td>${esc(LABELS[b.type])}<br><span class="mini-caption">${esc(roomOf(b.roomId)?.number||'Por asignar')}</span></td><td><strong>${money(b.total)}</strong><br><span class="mini-caption">Anticipo ${money(b.advance)}</span></td><td>${tag(({pendiente:'Pendiente',confirmada:'Confirmada',alojada:'Alojada',finalizada:'Finalizada',cancelada:'Cancelada'})[b.status]||b.status,b.status==='confirmada'?'success':b.status==='pendiente'?'warning':b.status==='cancelada'?'danger':'')}</td><td><div class="table-actions">${['pendiente','confirmada'].includes(b.status)?btn('Ingresar','checkin-booking','btn-light btn-sm',`data-id="${esc(b.id)}"`)+btn('Cancelar','cancel-booking','btn-danger btn-sm',`data-id="${esc(b.id)}"`):'—'}</div></td></tr>`).join('')}</tbody></table></div>`:noRows('No hay reservas. Utilice el formulario para crear la primera.')}</section>`;
+      </div><section class="panel section-gap"><div class="panel-head"><div><h2>Nómina de reservas</h2><p>${arr.length} reservas registradas en este navegador</p></div></div>${arr.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Huésped</th><th>Llegada / salida</th><th>Habitación</th><th>Total / anticipo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>${arr.map(b=>`<tr><td><strong>${esc(b.name)}</strong><br><span class="mini-caption">${esc(b.phone)}</span></td><td>${datePretty(b.arrival)}<br><span class="mini-caption">${datePretty(b.departure)}</span></td><td>${esc(LABELS[b.type])}<br><span class="mini-caption">${esc(roomOf(b.roomId)?.number||'Por asignar')}</span></td><td><strong>${money(b.total)}</strong><br><span class="mini-caption">Anticipo ${money(b.advance)}</span></td><td>${tag(({pendiente:'Pendiente',confirmada:'Confirmada',alojada:'Alojada',finalizada:'Finalizada',cancelada:'Cancelada'})[b.status]||b.status,b.status==='confirmada'?'success':b.status==='pendiente'?'warning':b.status==='cancelada'?'danger':'')}</td><td><div class="table-actions">${['pendiente','confirmada'].includes(b.status)?btn('Ingresar','checkin-booking','btn-light btn-sm',`data-id="${esc(b.id)}"`)+btn('Cancelar','cancel-booking','btn-danger btn-sm',`data-id="${esc(b.id)}"`):'—'}</div></td></tr>`).join('')}</tbody></table></div>`:noRows('No hay reservas. Utilice el formulario para crear la primera.')}</section>${renderReservationGuestDialog()}`;
   }
   function reservationRoomOptions(d){
     const selectedRooms=db.rooms.filter(r=>roomCompatible(r,d.type)&&availableForBooking(r,d.arrival,d.departure));
@@ -1473,7 +1546,7 @@
     const tender=resolveTendered(f.cashTendered,f.advanceMethod,advance,f.changeStatus);if(tender.error){toast(tender.error,'error');return;}
     const bookingAt=new Date().toISOString();
     const b=paidCashRecord({id:uid('booking'),name,phone,document,arrival:f.arrival,departure:f.departure,type:f.type,roomId:f.roomId||'',breakfast:f.breakfast,total,advance:asMoney(advance),status:total>0&&advance>=asMoney(total*.5)?'confirmada':'pendiente',advanceMethod:f.advanceMethod||'efectivo',advanceRef:String(f.advanceRef||'').trim(),shift:f.shift||'dia',notes:String(f.notes||'').trim(),createdAt:bookingAt},tender,bookingAt,f.shift||'dia');
-    db.reservations.push(b);persist();ui.reservationDraft=null;render();toast('Reserva guardada como '+b.status+'.');
+    db.reservations.push(b);persist();ui.reservationDraft=null;ui.reservationGuestSearchOpen=false;ui.reservationGuestSearchQuery='';render();toast('Reserva guardada como '+b.status+'.');
   }
   function processGuest(){
     const g=guestData(readForm('guest-form'));
@@ -1706,6 +1779,7 @@
     const nav=e.target.closest('[data-view]');if(nav){navigate(nav.dataset.view);return;}
     if(e.target.closest('#menu-toggle')){document.getElementById('sidebar').classList.toggle('open');return;}
     if(e.target.closest('#dismiss-notice')){document.querySelector('.notice')?.remove();return;}
+    if(e.target.classList?.contains('reservation-guest-overlay')){closeReservationGuestSearch();return;}
     const el=e.target.closest('[data-action]');if(!el)return;
     const action=el.dataset.action,id=el.dataset.id;
     switch(action){
@@ -1742,6 +1816,9 @@
       case 'export-cash':exportCash();break;
       case 'pick-product':{const sel=document.querySelector('#extra-form [name=productId]');if(sel){sel.value=id;updatePricing();sel.closest('.panel')?.scrollIntoView({behavior:'smooth',block:'center'});}break;}
       case 'lookup-guest':lookupGuest(el.dataset.scope);break;
+      case 'open-reservation-guest-search':openReservationGuestSearch();break;
+      case 'close-reservation-guest-search':closeReservationGuestSearch();break;
+      case 'select-reservation-guest':selectReservationGuest(id);break;
       case 'add-checkin-room':{
         const data=readForm('checkin-form');
         ui.checkinDraft={...ui.checkinDraft,...data};
@@ -1846,7 +1923,7 @@
       case 'reset-demo':{
         if(window.hotelCloud?.ready){toast('La opción de borrar todos los datos está deshabilitada mientras se usa la base compartida.','error');break;}
         if(!window.confirm('Se eliminarán todos los datos de demostración de este navegador. ¿Continuar?'))break;
-        db=defaults();ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};persist();render();toast('Demostración restablecida.');break;
+        db=defaults();ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};persist();render();toast('Demostración restablecida.');break;
       }
       default:break;
     }
@@ -1857,6 +1934,12 @@
   },true);
   document.addEventListener('input',e=>{
     const target=e.target;
+    if(target.id==='reservation-guest-search-input'){
+      ui.reservationGuestSearchQuery=target.value;
+      const results=document.getElementById('reservation-guest-results');
+      if(results)results.innerHTML=renderReservationGuestResults(target.value);
+      return;
+    }
     if(target.id==='checkin-varios-search'){
       ui.checkinProductSearch=target.value;
       const list=document.getElementById('checkin-product-results');
@@ -1921,10 +2004,28 @@
   document.addEventListener('reset',e=>{
     const id=e.target?.id;
     if(id==='checkin-form'){e.preventDefault();ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinVariosOpen=false;ui.checkinDraft=initialCheckinDraft();ui.prefillBookingId=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;render();}
-    else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();render();}
+    else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();ui.reservationGuestSearchOpen=false;ui.reservationGuestSearchQuery='';render();}
     else if(id==='guest-form'){e.preventDefault();ui.lookup.huespedes='';ui.lookupMessage.huespedes='';ui.lookupResult.huespedes=false;render();}
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='checkin-varios-search'){e.preventDefault();return;}if(e.key==='Escape'&&ui.selectedHistoryStayId){ui.selectedHistoryStayId=null;render();return;}if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
+  
+  document.addEventListener('keydown',e=>{
+    if(ui.reservationGuestSearchOpen){
+      if(e.key==='Escape'){e.preventDefault();closeReservationGuestSearch();return;}
+      if(e.key==='Enter'&&e.target.id==='reservation-guest-search-input'){e.preventDefault();return;}
+      if(e.key==='Tab'){
+        const dialog=document.getElementById('reservation-guest-dialog');
+        const controls=[...(dialog?.querySelectorAll('button:not([disabled]),input:not([disabled])')||[])];
+        if(controls.length){
+          if(e.shiftKey&&document.activeElement===controls[0]){e.preventDefault();controls[controls.length-1].focus();return;}
+          if(!e.shiftKey&&document.activeElement===controls[controls.length-1]){e.preventDefault();controls[0].focus();return;}
+        }
+      }
+    }
+    if(e.key==='Enter'&&e.target.id==='checkin-varios-search'){e.preventDefault();return;}
+    if(e.key==='Escape'&&ui.selectedHistoryStayId){ui.selectedHistoryStayId=null;render();return;}
+    if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}
+    if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}
+  });
   document.getElementById('year').textContent=String(new Date().getFullYear());
   document.getElementById('current-date').textContent=new Intl.DateTimeFormat('es-EC',{weekday:'short',day:'numeric',month:'long',year:'numeric'}).format(new Date());
   if(window.hotelCloud?.ready){
