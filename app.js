@@ -1488,22 +1488,36 @@
       </div>${cashChangeFields('manual')}<button class="btn btn-secondary section-gap" type="submit">Registrar cobro adicional</button></form></div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Registro de ventas</h2><p>${sold.length} operaciones · ${money(amount)} facturado, con cargos a habitaciones y ventas cobradas</p></div></div>${sold.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th>Destino</th><th>Categoría / producto</th><th>Cantidad</th><th>Importe</th><th>Cobro</th></tr></thead><tbody>${sold.slice(0,150).map(x=>`<tr><td>${timePretty(x.createdAt)}</td><td>${x.stayId?'Hab. '+esc(roomOf(stayOf(x.stayId)?.roomId)?.number||'—'):'Caja'}</td><td>${esc(catName(x.category))}<br><strong>${esc(x.productName)}</strong></td><td>${x.quantity}</td><td><strong>${money(x.price*x.quantity)}</strong></td><td>${x.stayId?'Pendiente en cuenta':x.method==='transferencia'?'Transferencia':'Efectivo'}</td></tr>`).join('')}</tbody></table></div>`:noRows('Aún no se registran ventas ni consumos.')}</section>`;
   }
+
   function renderStock(){
     const list=db.products.filter(p=>ui.stockCategory==='todas'||p.category===ui.stockCategory).slice().sort(sortProduct);
-    const counted=db.products.filter(p=>p.stock!==null).length;
+    const countedNevera=db.products.filter(p=>locationStock(p,'nevera')!==null).length;
+    const countedBodega=db.products.filter(p=>locationStock(p,'bodega')!==null).length;
     const todayMoves=db.stockMoves.filter(m=>localDateOf(m.createdAt)===today());
-    return head('Inventario / varios','Existencias de productos','Sustituye el conteo manual del cuaderno: ingreso, merma y conteo físico.',btn('Ir a ventas','go-varios','btn-secondary'))+
-    `<div class="metrics"><div class="metric"><div class="metric-top"><span class="metric-title">Referencias del catálogo</span></div><div class="metric-value">${db.products.length}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Productos contados</span></div><div class="metric-value">${counted}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Pendientes de contar</span></div><div class="metric-value">${db.products.length-counted}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Movimientos hoy</span></div><div class="metric-value">${todayMoves.length}</div></div></div>
-    <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Registrar movimiento de inventario</h2><p>El primer movimiento de cada producto debe ser un conteo físico.</p></div></div><div class="panel-body"><form id="stock-form"><div class="form-grid">
-    ${select('Producto','productId',[['','Seleccione producto'],...db.products.slice().sort(sortProduct).map(p=>[p.id,`${catName(p.category)} · ${p.name}`])],'','required')}
-    ${select('Tipo de movimiento','mode',[['conteo','Conteo físico (fijar cantidad)'],['entrada','Ingreso / reposición (+)'],['merma','Merma / pérdida (-)']],'conteo')}
-    ${field('Cantidad en unidades','quantity','',{required:true,type:'number',min:0,step:1,placeholder:'0'})}
-    ${select('Turno','shift',shiftOptions,'dia')}
-    ${field('Encargado','operator','',{placeholder:'Trabajador que realizó el conteo'})}
-    ${field('Observación','note','',{placeholder:'Entrega de proveedor, conteo, ajuste...'})}
-    </div><button class="btn btn-primary section-gap" type="submit">Guardar movimiento</button></form><div class="dashboard-notice">Las cantidades manuscritas de las fotos no se cargan como stock actual: primero registre el inventario físico vigente. Cada venta descontará unidades una vez que el producto esté contado.</div></div></section>
-    <aside class="panel"><div class="panel-head"><div><h2>Últimos movimientos</h2><p>Ventas y cambios de existencias registrados</p></div></div><div class="panel-body"><div class="movement-list">${db.stockMoves.length?db.stockMoves.slice().reverse().slice(0,15).map(m=>`<div class="movement-row"><div><strong>${esc(m.productName)}</strong><div class="mini-caption">${esc(({conteo:'Conteo físico',entrada:'Ingreso',merma:'Merma',venta:'Venta'})[m.mode]||m.mode)} · ${timePretty(m.createdAt)}${m.operator?' · '+esc(m.operator):''}</div></div><strong>${m.mode==='conteo'?'=':m.mode==='entrada'?'+':'−'}${m.quantity}</strong></div>`).join(''):noRows('No hay movimientos de inventario.')}</div></div></aside></div>
-    <section class="panel section-gap"><div class="panel-head"><div><h2>Stock por producto</h2><p>Estado del inventario por categorías</p></div></div><div class="filters"><select id="filter-stock-category">${selectOptions([['todas','Todas las categorías'],...Object.entries(CATEGORIES)],ui.stockCategory)}</select></div><div class="table-wrap"><table class="table"><thead><tr><th>Categoría</th><th>Producto</th><th>Precio</th><th>Existencia</th></tr></thead><tbody>${list.map(p=>`<tr><td>${esc(catName(p.category))}</td><td><strong>${esc(p.name)}</strong></td><td>${p.price===null?'Sin tarifa':money(p.price)}</td><td>${p.stock===null?tag('Sin conteo','warning'):tag(String(p.stock)+' uds.',p.stock===0?'danger':p.stock<=5?'warning':'success')}</td></tr>`).join('')}</tbody></table></div></section>`;
+    return head('Inventario / varios','Conteos de Nevera y Bodega','Escanee una muestra de cada producto e ingrese las unidades que hay físicamente.',btn('Ir a ventas','go-varios','btn-secondary'))+
+    `<div class="metrics"><div class="metric"><div class="metric-top"><span class="metric-title">Productos del catálogo</span></div><div class="metric-value">${db.products.length}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Contados en nevera</span></div><div class="metric-value">${countedNevera}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Contados en bodega</span></div><div class="metric-value">${countedBodega}</div></div><div class="metric"><div class="metric-top"><span class="metric-title">Movimientos hoy</span></div><div class="metric-value">${todayMoves.length}</div></div></div>
+    <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Contar o mover productos</h2><p>Escanee una botella de muestra, indique la cantidad real y confirme.</p></div></div><div class="panel-body">
+    <form id="stock-form"><div class="stock-scan-actions">
+      <button type="button" class="btn btn-secondary" data-action="open-stock-barcode-scanner">▣ Escanear código de barras</button>
+      <small>También puede elegir el producto manualmente. Escanear no añade unidades por sí solo.</small>
+    </div><div class="form-grid cols-2">
+      ${select('Producto','productId',[['','Seleccione producto'],...db.products.slice().sort(sortProduct).map(p=>[p.id,catName(p.category)+' · '+p.name])],'','required','stock-product')}
+      ${select('Ubicación','location',[['nevera','Nevera'],['bodega','Bodega']],'nevera','','stock-location')}
+      ${select('Movimiento','mode',[['conteo','Conteo físico (fijar cantidad)'],['entrada','Ingreso / reposición (+)'],['merma','Merma / pérdida (-)'],['traslado','Trasladar a otra ubicación']],'conteo','','stock-mode')}
+      ${field('Cantidad de unidades','quantity','',{id:'stock-quantity',required:true,type:'number',min:0,max:100000,step:1,placeholder:'Introduzca la cantidad real'})}
+      ${field('Encargado','operator','',{placeholder:'Trabajador que realiza el conteo'})}
+      ${field('Observación','note','',{placeholder:'Compra, reposición, conteo nocturno...'})}
+    </div><div class="phase2-preview" id="stock-preview">Seleccione un producto. Sin conteo no significa que haya cero unidades.</div>
+      <button type="submit" class="btn btn-primary section-gap">Confirmar y guardar movimiento</button>
+      <p class="mini-caption">Para reponer la nevera, seleccione Bodega → Trasladar. No es una venta ni un ingreso de caja.</p>
+    </form></div></section>
+    <aside class="panel"><div class="panel-head"><div><h2>Últimos movimientos</h2><p>Conteos, entradas, traslados y ventas</p></div></div><div class="panel-body"><div class="movement-list">
+      ${db.stockMoves.length?db.stockMoves.slice().reverse().slice(0,15).map(m=>`<div class="movement-row"><div><strong>${esc(m.productName)}</strong><div class="mini-caption">${esc(({conteo:'Conteo',entrada:'Ingreso',merma:'Merma',venta:'Venta',traslado:'Traslado'})[m.mode]||m.mode)} · ${esc(m.location==='bodega'?'Bodega':m.location==='nevera'?'Nevera':'Sin ubicación')} · ${timePretty(m.createdAt)}${m.operator?' · '+esc(m.operator):''}</div></div><strong>${m.mode==='conteo'?'=':m.mode==='entrada'?'+':'−'}${m.quantity}</strong></div>`).join(''):noRows('Aún no hay movimientos de inventario.')}
+    </div></div></aside></div>
+    <section class="panel section-gap"><div class="panel-head"><div><h2>Existencias por producto</h2><p>Nevera y bodega por separado. Un stock sin conteo no es cero.</p></div></div>
+      <div class="filters"><select id="filter-stock-category">${selectOptions([['todas','Todas las categorías'],...Object.entries(CATEGORIES)],ui.stockCategory)}</select></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Producto</th><th>Precio</th><th>Nevera</th><th>Bodega</th><th>Total</th></tr></thead>
+      <tbody>${list.map(p=>`<tr><td><strong>${esc(p.name)}</strong><small class="mini-caption">${esc(p.barcode||'Código por confirmar')}</small></td><td>${p.price===null?'Sin tarifa':money(p.price)}</td><td class="${productStockClass(p)}">${esc(stockDescription(locationStock(p,'nevera')))}</td><td>${esc(stockDescription(locationStock(p,'bodega')))}</td><td>${esc(stockDescription(p.stock))}</td></tr>`).join('')}</tbody></table></div></section>`;
   }
   function cashItems(date,shift){
     const items=[];
