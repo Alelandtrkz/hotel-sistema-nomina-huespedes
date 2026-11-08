@@ -39,3 +39,5 @@ jobs:
         run: node tests/reservas-buscador.test.cjs
       - name: Verificar cuenta compacta, desayunos y escaneo de varios
         run: node tests/cuenta-habitacion-v018.test.cjs
+      - name: Verificar turnos automáticos y formularios compactos
+        run: node tests/cuenta-compacta-v019.test.cjs

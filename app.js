@@ -514,16 +514,17 @@
         <div class="mini-caption">Asigne códigos de barras en Tarifas y ajustes. Los productos sin precio se agregan desde el catálogo general de Varios.</div>
       </form></div></details>`;
   }
+
   function renderBreakfastSection(stay){
     return `<details class="phase2-operation" id="phase2-breakfast"><summary><span>Agregar desayunos</span><small>${money(BREAKFAST_EXTRA_PRICE)} por unidad · cantidad a elección</small></summary>
-      <div class="phase2-operation-body"><form id="room-breakfast-form">
+      <div class="phase2-operation-body compact-operation-body"><form id="room-breakfast-form">
         <input type="hidden" name="stayId" value="${esc(stay.id)}">
-        <div class="form-grid cols-2">
-          ${field('Cantidad de desayunos','quantity','1',{id:'room-breakfast-quantity',type:'number',min:1,max:100,step:1,required:true})}
-          ${select('Turno','shift',shiftOptions,'dia','','room-breakfast-shift')}
+        <div class="compact-operation-row">
+          ${compactQuantityStepper('quantity','room-breakfast-quantity','Desayunos',100)}
           ${field('Encargado','operator','',{id:'room-breakfast-operator',placeholder:'Recepción'})}
+          ${automaticShiftHint()}
         </div>
-        <div class="phase2-preview" id="room-breakfast-preview">1 desayuno × ${money(BREAKFAST_EXTRA_PRICE)} = ${money(BREAKFAST_EXTRA_PRICE)}</div>
+        <div class="phase2-preview compact-charge-preview" id="room-breakfast-preview">1 desayuno × ${money(BREAKFAST_EXTRA_PRICE)} = ${money(BREAKFAST_EXTRA_PRICE)}</div>
         ${stay.breakfast==='con'?'<p class="mini-caption">La tarifa de esta estadía ya incluye desayuno. Añada solo desayunos adicionales solicitados.</p>':''}
         <button type="submit" class="btn btn-primary section-gap">Agregar desayunos a la cuenta</button>
         <p class="mini-caption">Se registra un cargo pendiente; no ingresa dinero en caja hasta cobrarlo.</p>
@@ -531,22 +532,25 @@
   }
 
   function renderAdditionalPersonSection(stay){
-  const adult=Number(db.config.extraPersonRate??10),child=Number(db.config.childRate??5),maxNights=Math.max(1,getNightCount(stay.arrival,stay.departure));
-  return `<details class="phase2-operation" id="phase2-people"><summary><span>Agregar persona adicional</span><small>Adultos ${money(adult)} · niños ${money(child)} por persona y noche aplicada</small></summary>
-    <div class="phase2-operation-body"><form id="room-person-form">
-      <input type="hidden" name="stayId" value="${esc(stay.id)}">
-      <div class="form-grid cols-2">
-        ${field('Nombre de la persona adicional','name','',{id:'room-person-name',required:true,placeholder:'Nombre y apellido',maxlength:100})}
-        ${select('Categoría','category',[['adulto','Adulto mayor de 12 años'],['nino','Niño de 6 a 12 años']],'adulto','','room-person-category')}
-        ${field('Noches a cobrar','nights','1',{id:'room-person-nights',type:'number',min:1,max:maxNights,step:1,required:true,hint:'Debe indicar expresamente por cuántas noches se cobra.'})}
-        ${select('Turno','shift',shiftOptions,'dia','','room-person-shift')}
-        ${field('Encargado','operator','',{id:'room-person-operator',placeholder:'Recepción'})}
-      </div>
-      <div id="room-person-preview" class="phase2-preview">Cargo estimado: ${money(adult)} por 1 noche.</div>
-      <button type="submit" class="btn btn-primary section-gap">Agregar persona y registrar cargo</button>
-      <p class="mini-caption section-gap">Se registra una persona por operación. Este cargo no constituye un registro oficial de identidad; confirme la tarifa antes de guardar.</p>
-    </form></div></details>`;
-}
+    const adult=Number(db.config.extraPersonRate??10),child=Number(db.config.childRate??5),
+      maxNights=Math.max(1,getNightCount(stay.arrival,stay.departure));
+    return `<details class="phase2-operation" id="phase2-people"><summary><span>Agregar persona adicional</span><small>Adultos ${money(adult)} · niños ${money(child)} por persona y noche aplicada</small></summary>
+      <div class="phase2-operation-body compact-operation-body"><form id="room-person-form">
+        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        <div class="compact-person-main">
+          <div class="field compact-person-name"><input id="room-person-name" name="name" type="text" maxlength="100" required autocomplete="off" aria-label="Nombre de la persona adicional" placeholder="Nombre y apellido de la persona adicional"></div>
+          ${select('Categoría','category',[['adulto','Adulto mayor de 12 años'],['nino','Niño de 6 a 12 años']],'adulto','','room-person-category')}
+        </div>
+        <div class="compact-operation-row compact-person-secondary">
+          ${compactQuantityStepper('nights','room-person-nights','Noches a cobrar',maxNights)}
+          ${field('Encargado','operator','',{id:'room-person-operator',placeholder:'Recepción'})}
+          ${automaticShiftHint()}
+        </div>
+        <div id="room-person-preview" class="phase2-preview compact-charge-preview">Cargo estimado: ${money(adult)} por 1 noche.</div>
+        <button type="submit" class="btn btn-primary section-gap">Agregar persona y registrar cargo</button>
+        <p class="mini-caption section-gap">Se registra una persona por operación. Este cargo no constituye un registro oficial de identidad; confirme la tarifa antes de guardar.</p>
+      </form></div></details>`;
+  }
 
   function extensionQuote(stay,nights){
     const n=Number(nights),max=365-getNightCount(stay.arrival,stay.departure);
@@ -559,22 +563,28 @@
     if(!Number.isSafeInteger(cents)||cents<=0||cents>1000000)return {error:'La tarifa histórica de la habitación no es válida.'};
     return {nights:n,newDeparture,total:asMoney(n*cents/100)};
   }
+
   function renderExtendStaySection(stay){
     const quote=extensionQuote(stay,1);
     return `<details class="phase2-operation" id="phase2-extension"><summary><span>Extender estadía</span><small>1 o varias noches · ${money(stay.roomRate)} por noche</small></summary>
-      <div class="phase2-operation-body"><form id="room-extension-form">
+      <div class="phase2-operation-body compact-operation-body"><form id="room-extension-form">
         <input type="hidden" name="stayId" value="${esc(stay.id)}">
-        <div class="form-grid cols-2">
-          ${field('Noches adicionales','nights','1',{id:'room-extension-nights',type:'number',min:1,max:90,step:1,required:true})}
-          ${select('Turno','shift',shiftOptions,'dia','','room-extension-shift')}
-          ${field('Encargado','operator','',{id:'room-extension-operator',placeholder:'Recepción'})}
+        <div class="phase2-preview extension-dates-card" id="room-extension-preview">
+          <div class="extension-dates-line"><strong>Salida actual:</strong><span id="room-extension-current-date">${datePretty(stay.departure)}</span></div>
+          <div class="extension-dates-line"><strong>Nueva salida:</strong><span id="room-extension-new-date">${quote.newDeparture?datePretty(quote.newDeparture):'Revisar'}</span></div>
+          <div class="extension-dates-line"><strong>Importe:</strong><span><strong id="room-extension-amount">${money(quote.total||0)}</strong> <small id="room-extension-rate-note">(1 noche × ${money(stay.roomRate)})</small></span></div>
         </div>
-        <div class="phase2-preview" id="room-extension-preview">Salida actual: ${datePretty(stay.departure)} · Nueva salida: ${quote.newDeparture?datePretty(quote.newDeparture):'Revisar'} · Cargo: ${money(quote.total||0)}</div>
+        <div class="compact-operation-row compact-extension-controls">
+          ${compactQuantityStepper('nights','room-extension-nights','Noches a extender',90)}
+          ${field('Encargado','operator','',{id:'room-extension-operator',placeholder:'Recepción'})}
+          ${automaticShiftHint()}
+        </div>
         <div id="room-extension-error" class="phase2-warning ${quote.error?'':'hidden'}">${esc(quote.error||'')}</div>
         <button id="room-extension-submit" class="btn btn-primary section-gap" type="submit" ${quote.error?'disabled':''}>Confirmar extensión</button>
         <p class="mini-caption">Se comprueban todas las noches nuevas frente a reservas y estadías; las reservas previas no se modifican.</p>
       </form></div></details>`;
   }
+
   function renderFinalAccountSection(stay){
   const due=dueOf(stay),pending=pendingChangeOf(stay);
   return `<details class="phase2-operation phase2-final" id="phase2-final"><summary><span>Cierre de cuenta final y salida</span><small>${due>0?'Saldo por cobrar '+money(due):'Sin saldo de hospedaje'} · pasar habitación a limpieza</small></summary>
@@ -1390,6 +1400,34 @@
       [p.name,p.category,p.barcode].some(v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)))
       .sort(sortProduct).slice(0,12);
   }
+
+  // Turnos según el reloj de Hotel Unicornio (El Coca, Ecuador), independientemente de la zona del teléfono.
+  // Día: desde las 07:30 inclusive hasta las 19:30 exclusive. Fuera de ese horario: Noche.
+  function receptionShiftAt(instant=new Date()){
+    const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Guayaquil',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(instant);
+    const hours=Number(parts.find(p=>p.type==='hour')?.value),minutes=Number(parts.find(p=>p.type==='minute')?.value);
+    const clock=hours*60+minutes;
+    return clock>=450&&clock<1170?'dia':'noche';
+  }
+  const receptionShift=()=>receptionShiftAt(new Date());
+  function automaticShiftHint(){
+    const shift=receptionShift();
+    return `<div class="reception-auto-shift" role="status"><span>Turno automático</span><strong>${shift==='dia'?'Día':'Noche'}</strong><small>07:30 a 19:30 · El Coca</small></div>`;
+  }
+  // SVGs reproducen la geometría Plus y Minus de Lucide; no requieren librerías externas.
+  const stepIconMinus='<svg xmlns="http://www.w3.org/2000/svg" class="lucide lucide-minus" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
+  const stepIconPlus='<svg xmlns="http://www.w3.org/2000/svg" class="lucide lucide-plus" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
+  function compactQuantityStepper(name,id,label,max,value=1){
+    return `<div class="compact-quantity-field">
+      <label for="${esc(id)}">${esc(label)}</label>
+      <div class="compact-quantity-stepper" role="group" aria-label="${esc(label)}">
+        <button type="button" data-action="step-room-quantity" data-target="${esc(id)}" data-step="-1" aria-label="Restar uno de ${esc(label)}">${stepIconMinus}</button>
+        <input id="${esc(id)}" name="${esc(name)}" type="number" inputmode="numeric" min="1" max="${max}" step="1" required aria-label="${esc(label)}" value="${esc(value)}">
+        <button type="button" data-action="step-room-quantity" data-target="${esc(id)}" data-step="1" aria-label="Sumar uno a ${esc(label)}">${stepIconPlus}</button>
+      </div>
+    </div>`;
+  }
+
   const shiftOptions=[['dia','Día'],['noche','Noche']];
   const destinations=()=>[['caja','Venta directa / caja'],...activeStays().map(s=>[s.id,'Cargar a Hab. '+(roomOf(s.roomId)?.number||'—')+' · '+guestName(guestOf(s.guestId))])];
   const catName=c=>CATEGORIES[c]||'Otros / servicios';
@@ -1569,8 +1607,11 @@
     const extensionForm=document.getElementById('room-extension-form');
     if(extensionForm){
       const f=readForm('room-extension-form'),stay=stayOf(f.stayId),quote=stay?extensionQuote(stay,f.nights):{error:'No se encontró la estadía.'};
-      const preview=document.getElementById('room-extension-preview'),error=document.getElementById('room-extension-error'),submit=document.getElementById('room-extension-submit');
-      if(preview)preview.textContent=quote.error?'Revise la cantidad y las fechas para continuar.':'Salida actual: '+datePretty(stay.departure)+' · Nueva salida: '+datePretty(quote.newDeparture)+' · Cargo: '+money(quote.total)+' ('+quote.nights+' noches × '+money(stay.roomRate)+')';
+      const newDate=document.getElementById('room-extension-new-date'),amount=document.getElementById('room-extension-amount'),
+        rateNote=document.getElementById('room-extension-rate-note'),error=document.getElementById('room-extension-error'),submit=document.getElementById('room-extension-submit');
+      if(newDate)newDate.textContent=quote.newDeparture?datePretty(quote.newDeparture):'Revisar';
+      if(amount)amount.textContent=quote.error?'—':money(quote.total);
+      if(rateNote)rateNote.textContent=quote.error?'': '('+quote.nights+' noche(s) × '+money(stay.roomRate)+')';
       if(error){error.textContent=quote.error||'';error.classList.toggle('hidden',!quote.error);}
       if(submit)submit.disabled=Boolean(quote.error);
     }
@@ -1817,7 +1858,7 @@
     db.extras.push({
       id:uid('extra'),stayId:stay.id,productId:'servicio-desayuno-adicional',
       productName:'Desayuno adicional',category:'otros',quantity,price:BREAKFAST_EXTRA_PRICE,
-      method:'pendiente',reference:'',shift:f.shift==='noche'?'noche':'dia',
+      method:'pendiente',reference:'',shift:receptionShift(),
       operator:String(f.operator||'').trim(),createdAt:new Date().toISOString(),
       cashTendered:0,cashChange:0,changeStatus:'no_aplica',changeDeliveredAt:null,changeDeliveredShift:null
     });
@@ -1840,7 +1881,7 @@
   const createdAt=new Date().toISOString();
   if(!Array.isArray(stay.additionalPeople))stay.additionalPeople=[];
   stay.additionalPeople.push({id:uid('person'),name,category,nights,unitPrice:asMoney(unitPrice),amount,
-    operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt});
+    operator:String(f.operator||'').trim(),shift:receptionShift(),createdAt});
   persist();render();toast('Persona adicional registrada. Cargo a la habitación: '+money(amount)+'.');
 }
   function processExtendStay(){
@@ -1855,7 +1896,7 @@
     if(!Array.isArray(stay.extensions))stay.extensions=[];
     stay.extensions.push({id:uid('extension'),oldDeparture,newDeparture:quote.newDeparture,
       addedNights:quote.nights,rate:asMoney(stay.roomRate),amount:quote.total,
-      operator:String(f.operator||'').trim(),shift:f.shift==='noche'?'noche':'dia',createdAt:stamp});
+      operator:String(f.operator||'').trim(),shift:receptionShift(),createdAt:stamp});
     stay.departure=quote.newDeparture;
     stay.roomTotal=asMoney(moneyCents(stay.roomTotal)/100+quote.total);
     persist();render();
@@ -2055,6 +2096,19 @@
       case 'toggle-room-extra-search':{
         const finder=document.getElementById('room-extra-search');
         if(finder){finder.classList.toggle('hidden');if(!finder.classList.contains('hidden'))document.getElementById('room-extra-search-input')?.focus();}
+        break;
+      }
+      case 'step-room-quantity':{
+        const allowed=['room-breakfast-quantity','room-person-nights','room-extension-nights'],
+          target=el.dataset.target,delta=Number(el.dataset.step);
+        if(!allowed.includes(target)||![-1,1].includes(delta))break;
+        const input=document.getElementById(target);
+        if(!input)break;
+        const min=Number(input.min)||1,max=Number(input.max)||100;
+        const oldValue=Number(input.value);
+        const current=Number.isSafeInteger(oldValue)?oldValue:min;
+        input.value=String(Math.min(max,Math.max(min,current+delta)));
+        updatePricing();
         break;
       }
       case 'pick-room-extra-product':selectRoomExtraProduct(id);break;
