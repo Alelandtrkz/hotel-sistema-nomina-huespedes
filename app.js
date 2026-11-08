@@ -355,23 +355,50 @@
       <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago</button>
     </form>`;
   }
-  function renderRoomExtraSection(stay){
-  const available=db.products.filter(p=>p.price!==null&&Number(p.price)>0).slice().sort(sortProduct);
-  return `<details class="phase2-operation" id="phase2-extras"><summary><span>Agregar varios a la habitación</span><small>Se cargarán a la cuenta, sin recibir dinero todavía</small></summary>
-    <div class="phase2-operation-body"><form id="room-extra-form">
-      <input type="hidden" name="stayId" value="${esc(stay.id)}">
-      <div class="form-grid cols-2">
-        ${select('Producto','productId',[['','Seleccione un producto'],...available.map(p=>[p.id,`${p.name} · ${money(p.price)}${p.stock!==null?' · stock '+p.stock:''}`])],'','required','room-extra-product')}
-        ${field('Cantidad','quantity','1',{id:'room-extra-quantity',type:'number',min:1,max:1000,step:1,required:true})}
-        ${select('Turno','shift',shiftOptions,'dia','','room-extra-shift')}
-        ${field('Encargado','operator','',{id:'room-extra-operator',placeholder:'Recepción'})}
-      </div>
-      <div id="room-extra-preview" class="phase2-preview">Seleccione un producto.</div>
-      <button class="btn btn-primary section-gap" type="submit" ${available.length?'':'disabled'}>Agregar consumo a la cuenta</button>
-      <div class="mini-caption">Los productos sin precio definido se registran desde el catálogo completo de Varios.</div>
-    </form></div></details>`;
-}
 
+  function renderRoomProductMatches(query){
+    if(String(query||'').trim().length<2)return '<p class="mini-caption">Escriba al menos dos caracteres para buscar productos.</p>';
+    const matches=roomProductMatches(query);
+    if(!matches.length)return '<p class="mini-caption">No se encontraron productos con precio. Revise el catálogo.</p>';
+    return matches.map(p=>`<button type="button" class="room-extra-search-result" data-action="pick-room-extra-product" data-id="${esc(p.id)}">
+       <strong>${esc(p.name)}</strong><small>${money(p.price)} · ${p.stock===null?'Sin conteo':'Stock '+p.stock}${p.barcode?' · código '+esc(p.barcode):''}</small>
+    </button>`).join('');
+  }
+  function selectRoomExtraProduct(id){
+    const p=productOf(id),field=document.getElementById('room-extra-product');
+    if(!field||!p||p.price===null||Number(p.price)<=0){toast('El producto no tiene un precio válido.','error');return false;}
+    field.value=p.id;
+    const finder=document.getElementById('room-extra-search');
+    if(finder)finder.classList.add('hidden');
+    updatePricing();
+    field.focus?.();
+    return true;
+  }
+  function renderRoomExtraSection(stay){
+    const available=db.products.filter(p=>p.price!==null&&Number(p.price)>0).slice().sort(sortProduct);
+    return `<details class="phase2-operation" id="phase2-extras"><summary><span>Agregar varios a la habitación</span><small>Busque productos o escanee su código de barras</small></summary>
+      <div class="phase2-operation-body"><form id="room-extra-form">
+        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        <div class="room-extra-tools">
+          <button type="button" class="btn btn-secondary" data-action="toggle-room-extra-search">⌕ Buscar producto</button>
+          <button type="button" class="btn btn-secondary" data-action="open-room-barcode-scanner">▣ Escanear código</button>
+        </div>
+        <div id="room-extra-search" class="room-extra-search hidden">
+          <label for="room-extra-search-input">Buscar por nombre, categoría o código</label>
+          <input id="room-extra-search-input" type="search" placeholder="Ej. agua, galleta, 750..." autocomplete="off">
+          <div id="room-extra-search-results" class="room-extra-search-results">${renderRoomProductMatches('')}</div>
+        </div>
+        <div class="form-grid cols-2">
+          ${select('Producto','productId',[['','Seleccione un producto'],...available.map(p=>[p.id,`${p.name} · ${money(p.price)}${p.stock!==null?' · stock '+p.stock:''}`])],'','required','room-extra-product')}
+          ${field('Cantidad','quantity','1',{id:'room-extra-quantity',type:'number',min:1,max:1000,step:1,required:true})}
+          ${select('Turno','shift',shiftOptions,'dia','','room-extra-shift')}
+          ${field('Encargado','operator','',{id:'room-extra-operator',placeholder:'Recepción'})}
+        </div>
+        <div id="room-extra-preview" class="phase2-preview">Seleccione un producto.</div>
+        <button class="btn btn-primary section-gap" type="submit" ${available.length?'':'disabled'}>Agregar consumo a la cuenta</button>
+        <div class="mini-caption">Asigne códigos de barras en Tarifas y ajustes. Los productos sin precio se agregan desde el catálogo general de Varios.</div>
+      </form></div></details>`;
+  }
   function renderBreakfastSection(stay){
     return `<details class="phase2-operation" id="phase2-breakfast"><summary><span>Agregar desayunos</span><small>${money(BREAKFAST_EXTRA_PRICE)} por unidad · cantidad a elección</small></summary>
       <div class="phase2-operation-body"><form id="room-breakfast-form">
@@ -1905,6 +1932,12 @@
       case 'go-varios':navigate('varios');break;
       case 'go-caja':navigate('caja');break;
       case 'export-cash':exportCash();break;
+      case 'toggle-room-extra-search':{
+        const finder=document.getElementById('room-extra-search');
+        if(finder){finder.classList.toggle('hidden');if(!finder.classList.contains('hidden'))document.getElementById('room-extra-search-input')?.focus();}
+        break;
+      }
+      case 'pick-room-extra-product':selectRoomExtraProduct(id);break;
       case 'pick-product':{const sel=document.querySelector('#extra-form [name=productId]');if(sel){sel.value=id;updatePricing();sel.closest('.panel')?.scrollIntoView({behavior:'smooth',block:'center'});}break;}
       case 'lookup-guest':lookupGuest(el.dataset.scope);break;
       case 'open-reservation-guest-search':openReservationGuestSearch();break;
@@ -2026,6 +2059,11 @@
   },true);
   document.addEventListener('input',e=>{
     const target=e.target;
+    if(target.id==='room-extra-search-input'){
+      const results=document.getElementById('room-extra-search-results');
+      if(results)results.innerHTML=renderRoomProductMatches(target.value);
+      return;
+    }
     if(target.id==='reservation-guest-search-input'){
       ui.reservationGuestSearchQuery=target.value;
       const results=document.getElementById('reservation-guest-results');
