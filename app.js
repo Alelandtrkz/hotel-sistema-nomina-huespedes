@@ -288,7 +288,7 @@
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula ecuatoriana','document',g.document,{required:true,placeholder:'10 dígitos',maxlength:10})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por número de cédula</label><input id="lookup-${scope}" inputmode="numeric" maxlength="10" placeholder="Ingrese 10 dígitos" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
+  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'por_cobrar',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
@@ -949,6 +949,7 @@
   function updatePricing(){
     const ci=document.getElementById('checkin-form');
     if(ci){
+      syncCheckinVariosForm();
       const f=readForm('checkin-form'),estimate=checkinGroupEstimate(f),n=estimate.nights,
         r=checkinNightRate(f.type,f.breakfast,f.paymentMethod),total=estimate.grandTotal,
         adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=checkinPaymentAmount(f,total,adv),
@@ -1067,7 +1068,7 @@
     const guest=b.document&&getGuestByDocument(b.document);
     const parsed=guest?guestData(guest):splitFullName(b.name);
     ui.prefillBookingId=id;
-    ui.checkinExtraRooms=[];ui.checkinRowSeq=0;
+    ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';
     ui.checkinDraft={...initialCheckinDraft(),...parsed,document:b.document||'',phone:b.phone||'',arrival:b.arrival,departure:b.departure,type:b.type,roomId:b.roomId||'',breakfast:b.breakfast,notes:b.notes||'',paymentAmount:'0'};
     ui.lookup.ingreso=b.document||'';ui.lookupMessage.ingreso=guest?'Huésped encontrado y vinculado a la reserva.':'Reserva precargada; confirme los datos del huésped.';ui.lookupResult.ingreso=Boolean(guest);
     navigate('ingreso');
@@ -1389,7 +1390,7 @@
     const action=el.dataset.action,id=el.dataset.id;
     switch(action){
       case 'go-inicio':navigate('inicio');break;
-      case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
+      case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
       case 'go-salidas':navigate('salidas');break;
@@ -1418,6 +1419,23 @@
       case 'remove-checkin-room':{
         ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
         ui.checkinExtraRooms=(ui.checkinExtraRooms||[]).filter(r=>r.key!==id);
+        for(const row of ui.checkinVarios||[])if(row.roomKey===id)row.roomKey='principal';
+        render();break;
+      }
+      case 'checkin-add-product':{
+        const product=productOf(id);if(!product||product.price===null||Number(product.price)<=0){toast('Producto no disponible o sin precio.','error');break;}
+        const values=readForm('checkin-form');syncCheckinVariosForm();
+        ui.checkinDraft={...ui.checkinDraft,...values};
+        const existing=(ui.checkinVarios||[]).filter(row=>row.productId===id).reduce((sum,row)=>sum+(Number(row.quantity)||0),0);
+        if(product.stock!==null&&existing+1>product.stock){toast('No quedan existencias disponibles de '+product.name+'.','error');break;}
+        ui.checkinVariosSeq=Number(ui.checkinVariosSeq||0)+1;
+        ui.checkinVarios.push({key:'checkvar'+ui.checkinVariosSeq,productId:id,quantity:'1',roomKey:'principal'});
+        render();break;
+      }
+      case 'checkin-remove-product':{
+        const values=readForm('checkin-form');syncCheckinVariosForm();
+        ui.checkinDraft={...ui.checkinDraft,...values};
+        ui.checkinVarios=(ui.checkinVarios||[]).filter(row=>row.key!==id);
         render();break;
       }
       case 'select-room':ui.selectedRoomId=id;navigate('habitaciones');break;
@@ -1442,7 +1460,7 @@
       }
       case 'start-room-checkin':{
         const room=roomOf(id);if(!room||room.status!=='disponible'){toast('Esta habitación no está disponible.','error');break;}
-        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft={...initialCheckinDraft(),type:room.type==='flex_aire'?'individual':room.type==='flex_ventilador'?'individual_ventilador':room.type,roomId:room.id};ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
+        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft={...initialCheckinDraft(),type:room.type==='flex_aire'?'individual':room.type==='flex_ventilador'?'individual_ventilador':room.type,roomId:room.id};ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       }
       case 'mark-room-dirty':{
         const room=roomOf(id);if(!room||room.status==='ocupada'||room.status==='arrendada'){toast('No puede cambiar una habitación ocupada o arrendada.','error');break;}
@@ -1455,7 +1473,7 @@
       case 'checkin-booking':startBookedCheckin(id);break;
       case 'checkin-guest':{
         const g=guestOf(id);if(!g)break;
-        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft={...initialCheckinDraft(),...guestData(g)};ui.lookup.ingreso=g.document;ui.lookupMessage.ingreso='Huésped encontrado: '+guestName(g);ui.lookupResult.ingreso=true;navigate('ingreso');break;
+        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft={...initialCheckinDraft(),...guestData(g)};ui.lookup.ingreso=g.document;ui.lookupMessage.ingreso='Huésped encontrado: '+guestName(g);ui.lookupResult.ingreso=true;navigate('ingreso');break;
       }
       case 'unlink-booking':ui.prefillBookingId=null;render();break;
       case 'cancel-booking':{
@@ -1492,7 +1510,15 @@
   });
   document.addEventListener('input',e=>{
     const target=e.target;
-    if(target.closest('#checkin-form')){ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};updatePricing();}
+    if(target.id==='checkin-varios-search'){
+      ui.checkinProductSearch=target.value;
+      const list=document.getElementById('checkin-product-results');
+      if(list)list.innerHTML=renderCheckinProductResults(target.value);
+      return;
+    }
+    if(target.closest('#checkin-form')){
+      ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};syncCheckinVariosForm();updatePricing();
+    }
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
     if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
   });
@@ -1504,7 +1530,7 @@
     if(el.id==='filter-room-status'){ui.roomFilter=el.value;render();return;}
     if(el.id==='filter-room-type'){ui.roomTypeFilter=el.value;render();return;}
     if(el.closest('#checkin-form')){
-      ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
+      ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};syncCheckinVariosForm();
       if(['type','arrival','departure','roomId'].includes(el.name)||/^batch\d+__(?:type|roomId)$/.test(el.name))refreshRoomSelect('ingreso');
       if(el.name==='paymentMethod'){const transfer=checkinPaymentChoice(el.value)?.method==='transferencia';document.getElementById('transfer-field')?.classList.toggle('hidden',!transfer);}
       if(el.name==='invoice')document.getElementById('invoice-fields')?.classList.toggle('hidden',el.value!=='si');
@@ -1525,7 +1551,7 @@
   });
   document.addEventListener('reset',e=>{
     const id=e.target?.id;
-    if(id==='checkin-form'){e.preventDefault();ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft=initialCheckinDraft();ui.prefillBookingId=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;render();}
+    if(id==='checkin-form'){e.preventDefault();ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft=initialCheckinDraft();ui.prefillBookingId=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;render();}
     else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();render();}
     else if(id==='guest-form'){e.preventDefault();ui.lookup.huespedes='';ui.lookupMessage.huespedes='';ui.lookupResult.huespedes=false;render();}
   });
