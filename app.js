@@ -684,6 +684,72 @@
     </div>
   </section>`;
 }
+  function roomHousekeepingPrintHtml(report){
+  const generated=new Intl.DateTimeFormat('es-EC',{dateStyle:'short',timeStyle:'short'}).format(new Date());
+  const fmt=d=>d?datePretty(d):'—';
+  const rows=report.rows.map(x=>`<tr>
+    <td class="num">${esc(x.number)}</td><td>${esc(x.type)}</td>
+    <td class="status">${esc(x.status)}</td>
+    <td>${esc(fmt(x.arrival))}${x.isArrival?' · Llega':''}</td>
+    <td>${esc(fmt(x.departure))}${x.isDeparture?' · Sale':''}</td>
+    <td class="check"></td><td class="note"></td>
+  </tr>`).join('');
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+    <title>Hotel Unicornio · Camarería · ${esc(report.date)}</title>
+    <style>
+    @page{size:A4 landscape;margin:13mm 12mm}
+    *{box-sizing:border-box}body{margin:0;color:#192d24;font:11px Arial,sans-serif}
+    h1{font:700 21px Georgia,serif;margin:0 0 4px}h2{font:700 13px Arial,sans-serif;margin:0 0 12px}
+    .header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:2px solid #2b5b43;padding-bottom:11px;margin-bottom:10px}
+    .meta{font-size:10px;color:#526459;text-align:right;line-height:1.7}
+    .summary{display:flex;gap:16px;flex-wrap:wrap;border:1px solid #d8e5d9;background:#f5f8f4;padding:8px 10px;margin:8px 0 12px}
+    .summary strong{font-size:13px}.summary span{font-size:10px}
+    .notelead{font-size:9px;color:#626b61;margin:10px 0}
+    table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+    thead{display:table-header-group}tr{break-inside:avoid}
+    th,td{border:1px solid #aab5aa;padding:6px 5px;text-align:left;vertical-align:middle;min-height:23px;overflow-wrap:anywhere}
+    th{background:#e9f0ea;font-size:9px;text-transform:uppercase}
+    td.num{font-size:13px;font-weight:800;text-align:center}
+    td.status{font-weight:700}td.check{text-align:center}
+    tr:nth-child(even) td{background:#fafcf9}
+    .footer{margin-top:12px;display:flex;gap:26px;justify-content:space-between;font-size:10px;align-items:end}
+    .signature{border-bottom:1px solid #8c9a8e;min-width:170px;height:28px}
+    .no-print{margin-bottom:12px;font:12px Arial,sans-serif}
+    .no-print button{background:#285f49;color:white;padding:8px 14px;border:0;border-radius:5px;cursor:pointer}
+    @media print{.no-print{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+    <div class="no-print"><button type="button" onclick="window.print()">Imprimir reporte</button></div>
+    <header class="header"><div><h1>Hotel Unicornio</h1><h2>REPORTE DE CAMARERÍA — ${esc(datePretty(report.date))}</h2></div>
+      <div class="meta">Fecha de consulta: ${esc(report.date)}<br>Generado: ${esc(generated)}<br>Puerto Francisco de Orellana, Ecuador</div></header>
+    <div class="summary"><span><strong>${report.summary.occupied}</strong> ocupadas</span>
+      <span><strong>${report.summary.reserved}</strong> reservadas</span>
+      <span><strong>${report.summary.free}</strong> libres previstas</span>
+      <span><strong>${report.summary.cleaning}</strong> por limpiar</span>
+      <span><strong>${report.summary.rented}</strong> arrendadas</span>
+      <span><strong>${report.rows.length}</strong> habitaciones</span></div>
+    <table><thead><tr><th style="width:6%">Habitación</th><th style="width:18%">Tipo</th>
+      <th style="width:17%">Estado</th><th style="width:13%">Llegada</th>
+      <th style="width:13%">Salida</th><th style="width:11%">Limpieza ✓</th>
+      <th style="width:22%">Observaciones / novedades</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <div class="notelead">Reporte operativo. Las fechas futuras son previsiones basadas en ingresos y reservas registrados. Una salida prevista no confirma que se haya realizado limpieza. No contiene datos personales de huéspedes.</div>
+    <footer class="footer"><div>Elaboró / Recepción<div class="signature"></div></div>
+      <div>Verificó / Camarería<div class="signature"></div></div>
+      <div>Observaciones generales<div class="signature" style="min-width:270px"></div></div></footer>
+    </body></html>`;
+}
+  function printHousekeepingReport(){
+  const date=roomPlanningDate();
+  const html=roomHousekeepingPrintHtml(roomPrintData(date));
+  const page=window.open('','_blank','width=1100,height=780');
+  if(!page){toast('El navegador bloqueó la ventana de impresión. Autorice ventanas emergentes para imprimir el reporte de camarería.','error');return;}
+  page.opener=null;
+  page.document.open();
+  page.document.write(html);
+  page.document.close();
+  page.focus();
+  page.print();
+}
   function renderRooms(){
   const dateMode=Boolean(ui.roomDateMode),date=roomPlanningDate();
   const plans=dateMode?roomPlansForDate(date):[];
@@ -1641,6 +1707,19 @@
       case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinVariosOpen=false;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
+      case 'toggle-room-dates':{
+        ui.roomDateMode=!ui.roomDateMode;
+        ui.roomDate=ui.roomDateMode?(roomDateValid(ui.roomDate)?ui.roomDate:today()):null;
+        ui.roomFilter='todos';ui.selectedRoomId=null;render();
+        break;
+      }
+      case 'room-plan-today':{
+        ui.roomDateMode=true;ui.roomDate=today();ui.selectedRoomId=null;render();break;
+      }
+      case 'room-plan-tomorrow':{
+        ui.roomDateMode=true;ui.roomDate=tomorrow();ui.selectedRoomId=null;render();break;
+      }
+      case 'print-housekeeping':printHousekeepingReport();break;
       case 'filter-room-summary':{
         if(!['ocupada','disponible','por-cobrar','reservadas'].includes(id))break;
         ui.roomFilter=ui.roomFilter===id?'todos':id;
@@ -1792,6 +1871,13 @@
     if(el.id==='filter-product-category'){ui.productCategory=el.value;render();return;}
     if(el.id==='filter-stock-category'){ui.stockCategory=el.value;render();return;}
     if(el.id==='cash-date'||el.id==='cash-shift'){ui.cashDraft=readForm('cash-close-form');if(el.id==='cash-date')ui.cashDate=el.value;else ui.cashShift=el.value;render();return;}
+    if(el.id==='room-plan-date'){
+      if(!roomDateValid(el.value)){
+        toast('Seleccione una fecha válida de hoy en adelante para consultar las habitaciones.','error');
+        el.value=roomPlanningDate();return;
+      }
+      ui.roomDateMode=true;ui.roomDate=el.value;ui.selectedRoomId=null;render();return;
+    }
     if(el.id==='filter-room-status'){ui.roomFilter=el.value;render();return;}
     if(el.id==='filter-room-type'){ui.roomTypeFilter=el.value;render();return;}
     if(el.closest('#checkin-form')){
