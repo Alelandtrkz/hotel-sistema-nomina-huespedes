@@ -352,3 +352,35 @@ details.checkin-varios[open] .checkin-varios-arrow{transform:rotate(180deg)}
  .rooms-overview .metric-sub{font-size:10px}
  .rooms-overview .metric-icon{width:29px;height:29px}
 }
+
+/* v0.14 · Tarjetas del resumen de habitaciones como filtros operativos */
+.rooms-overview button.rooms-kpi{
+  appearance:none;-webkit-appearance:none;
+  display:block;width:100%;height:100%;text-align:left;
+  font:inherit;cursor:pointer;color:var(--ink);
+  transition:background .16s,border-color .16s,box-shadow .16s,transform .16s;
+}
+.rooms-overview button.rooms-kpi:hover{
+  border-color:#b5cfc0;background:#fbfefc;transform:translateY(-2px);
+  box-shadow:0 6px 18px rgba(26,67,47,.09);
+}
+.rooms-overview button.rooms-kpi:focus-visible{
+  outline:3px solid #91c5a7;outline-offset:3px;
+}
+.rooms-overview button.rooms-kpi.is-active{
+  border:2px solid #2e7456;box-shadow:0 0 0 2px rgba(53,125,85,.12);
+  background:#f4fbf6;padding:20px 22px 18px;
+}
+.rooms-overview button.rooms-kpi.is-active .metric-title{
+  font-weight:800;color:#285840;
+}
+.rooms-overview button.rooms-kpi.is-active .metric-icon{
+  box-shadow:0 0 0 1px rgba(41,112,75,.12);
+}
+@media(max-width:640px){
+  .rooms-overview button.rooms-kpi.is-active{padding:13px}
+}
+@media(prefers-reduced-motion:reduce){
+  .rooms-overview button.rooms-kpi{transition:none}
+  .rooms-overview button.rooms-kpi:hover{transform:none}
+}
