@@ -1238,6 +1238,16 @@
   }
   const paidDirect=x=>!x.stayId&&['efectivo','transferencia'].includes(x.method);
   const productOf=id=>db.products.find(p=>p.id===id);
+  const normalizeBarcode=value=>String(value||'').trim().toUpperCase();
+  const barcodeValid=code=>!code||/^[A-Z0-9._-]{3,64}$/.test(code);
+  const productByBarcode=code=>db.products.find(p=>normalizeBarcode(p.barcode)===normalizeBarcode(code)&&normalizeBarcode(code));
+  function roomProductMatches(query){
+    const q=String(query||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    if(q.length<2)return [];
+    return db.products.filter(p=>p.price!==null&&Number(p.price)>0&&
+      [p.name,p.category,p.barcode].some(v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)))
+      .sort(sortProduct).slice(0,12);
+  }
   const shiftOptions=[['dia','Día'],['noche','Noche']];
   const destinations=()=>[['caja','Venta directa / caja'],...activeStays().map(s=>[s.id,'Cargar a Hab. '+(roomOf(s.roomId)?.number||'—')+' · '+guestName(guestOf(s.guestId))])];
   const catName=c=>CATEGORIES[c]||'Otros / servicios';
@@ -1340,7 +1350,7 @@
     <div class="form-section-label">Tarifas adicionales, según cartel de recepción</div><div class="form-grid cols-3">${field('Niño mayor de 5 años','childRate',db.config.childRate,{type:'number',min:0,step:'0.01',hint:'USD 5 por adicional; falta confirmar política para 5 años o menos.'})}${field('Persona adicional mayor de 12 años','extraPersonRate',db.config.extraPersonRate,{type:'number',min:0,step:'0.01',hint:'USD 10. No se suma automáticamente al hospedaje.'})}${field('Entrada antes de check-in','earlyFee',db.config.earlyFee,{type:'number',min:0,step:'0.01',hint:'Cargo de USD 10, según cartel.'})}</div>
     <div class="dashboard-notice">El tarifario fotografiado no especifica el precio <strong>con desayuno para habitaciones con ventilador</strong>. Se mantiene pendiente, sin inventar un valor.</div>
     <div class="form-actions"><button class="btn btn-primary" type="submit">Guardar tarifas</button></div></form></div></section>
-    <aside class="panel"><div class="panel-head"><div><h2>Catálogo de productos</h2><p>${db.products.length} artículos y servicios · precios editables</p></div></div><div class="panel-body"><form id="products-form"><div class="product-settings-list">${db.products.slice().sort(sortProduct).map(p=>`<div class="settings-table" style="grid-template-columns:1fr minmax(85px,110px)"><span class="text-strong">${esc(p.name)}<small class="mini-caption" style="display:block">${esc(CATEGORIES[p.category]||p.category||'Otros')}</small></span><div class="field"><input type="number" aria-label="Precio ${esc(p.name)}" name="product-${esc(p.id)}" min="0" step="0.01" placeholder="Por definir" value="${esc(p.price??'')}"></div></div>`).join('')}</div><div class="form-actions"><button type="submit" class="btn btn-primary">Guardar precios</button></div></form><div class="divider"></div><form id="new-product-form"><div class="form-grid">${field('Nuevo producto / servicio','name','',{required:true,placeholder:'Ej. Servicio de planchado'})}${select('Categoría','category',Object.entries(CATEGORIES),'otros')}${field('Precio unitario','price','',{type:'number',min:0,step:'0.01',placeholder:'Por definir'})}</div><button class="btn btn-secondary section-gap" type="submit">Agregar al catálogo</button></form></div></aside></div>
+    <aside class="panel"><div class="panel-head"><div><h2>Catálogo de productos</h2><p>${db.products.length} artículos y servicios · precios editables</p></div></div><div class="panel-body"><form id="products-form"><div class="product-settings-list">${db.products.slice().sort(sortProduct).map(p=>`<div class="settings-table barcode-settings-row"><span class="text-strong">${esc(p.name)}<small class="mini-caption" style="display:block">${esc(CATEGORIES[p.category]||p.category||'Otros')}</small></span><div class="field"><input type="number" aria-label="Precio ${esc(p.name)}" name="product-${esc(p.id)}" min="0" step="0.01" placeholder="Por definir" value="${esc(p.price??'')}"></div><div class="field"><input aria-label="Código de barras ${esc(p.name)}" name="barcode-${esc(p.id)}" inputmode="text" maxlength="64" autocomplete="off" placeholder="Código de barras" value="${esc(p.barcode||'')}"></div></div>`).join('')}</div><div class="mini-caption section-gap">Para escanear desde una habitación, asigne aquí el código impreso en cada producto y guarde los cambios.</div><div class="form-actions"><button type="submit" class="btn btn-primary">Guardar precios y códigos</button></div></form><div class="divider"></div><form id="new-product-form"><div class="form-grid">${field('Nuevo producto / servicio','name','',{required:true,placeholder:'Ej. Servicio de planchado'})}${select('Categoría','category',Object.entries(CATEGORIES),'otros')}${field('Precio unitario','price','',{type:'number',min:0,step:'0.01',placeholder:'Por definir'})}${field('Código de barras (opcional)','barcode','',{placeholder:'Ej. 7501234567890',maxlength:64})}</div><button class="btn btn-secondary section-gap" type="submit">Agregar al catálogo</button></form></div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Inventario de habitaciones</h2><p>Según hoja entregada: 19 flexibles A/C, 2 flexibles ventilador, 2 dobles, 2 triples y 8 arrendadas únicas.</p></div></div><div class="panel-body"><div class="pill-list">${db.rooms.map(r=>`<span class="small-tag">${esc(r.number)} · ${esc(LABELS[r.type])}</span>`).join('')}</div>
       <details class="inventory-details section-gap"><summary>Editar número, categoría y estado del inventario</summary><form id="room-inventory-form"><div class="inventory-row inventory-heading"><span>Número</span><span>Tipo</span><span>Estado</span><span>Acción</span></div>${db.rooms.map(r=>`<div class="inventory-row"><input aria-label="Número de ${esc(r.number)}" name="${esc(r.id)}__number" value="${esc(r.number)}" maxlength="8" required><select aria-label="Tipo de ${esc(r.number)}" name="${esc(r.id)}__type">${selectOptions(ROOM_TYPES.map(t=>[t,LABELS[t]]),r.type)}</select><span>${statusTag(r.status)}</span><button class="btn btn-sm btn-danger" type="button" data-action="delete-room" data-id="${esc(r.id)}">Eliminar</button></div>`).join('')}<div class="form-actions"><button class="btn btn-primary" type="submit">Guardar inventario</button></div></form></details>
       <div class="form-section-label">Agregar una habitación</div><form id="new-room-form"><div class="form-grid cols-3">${field('Número de habitación','number','',{required:true,placeholder:'Ej. 31'})}${select('Categoría física','type',ROOM_TYPES.map(t=>[t,LABELS[t]]),'flex_aire')}<div class="field"><label>&nbsp;</label><button class="btn btn-secondary" type="submit">Agregar habitación</button></div></div></form>
@@ -1810,9 +1820,18 @@
     db.config.rates=next;persist();render();toast('Tarifas guardadas. Los registros anteriores conservan sus importes.');
   }
   function processProducts(){
-    const f=readForm('products-form');for(const p of db.products){const v=String(f['product-'+p.id]??'').trim();if(v!==''&&(!Number.isFinite(Number(v))||Number(v)<0)){toast('Revise el precio de '+p.name+'.','error');return;}}
-    for(const p of db.products){const v=String(f['product-'+p.id]??'').trim();p.price=v===''?null:asMoney(v);}
-    persist();render();toast('Catálogo de productos actualizado.');
+    const f=readForm('products-form'),draft=[],codes=new Set();
+    for(const p of db.products){
+      const raw=String(f['product-'+p.id]??'').trim();
+      if(raw!==''&&(!Number.isFinite(Number(raw))||Number(raw)<0)){toast('Revise el precio de '+p.name+'.','error');return;}
+      const barcode=normalizeBarcode(f['barcode-'+p.id]===undefined?p.barcode:f['barcode-'+p.id]);
+      if(!barcodeValid(barcode)){toast('Código de barras inválido para '+p.name+'. Use entre 3 y 64 caracteres, sin espacios.','error');return;}
+      if(barcode&&codes.has(barcode)){toast('Los códigos de barras no pueden repetirse. Revise '+p.name+'.','error');return;}
+      if(barcode)codes.add(barcode);
+      draft.push({p,price:raw===''?null:asMoney(raw),barcode});
+    }
+    for(const row of draft){row.p.price=row.price;row.p.barcode=row.barcode;}
+    persist();render();toast('Precios y códigos de barras guardados.');
   }
   function processInventory(){
     const f=readForm('room-inventory-form'),proposed=[];
@@ -1827,10 +1846,12 @@
     persist();render();toast('Inventario de habitaciones actualizado.');
   }
   function processNewProduct(){
-    const f=readForm('new-product-form'),name=String(f.name||'').trim(),price=String(f.price??'').trim();
+    const f=readForm('new-product-form'),name=String(f.name||'').trim(),price=String(f.price??'').trim(),barcode=normalizeBarcode(f.barcode);
     if(!name||name.length>60||db.products.some(p=>p.name.toLowerCase()===name.toLowerCase())){toast('Use un nombre de producto único, de hasta 60 caracteres.','error');return;}
     if(price!==''&&(!Number.isFinite(Number(price))||Number(price)<0)){toast('Ingrese un precio válido o deje el campo vacío.','error');return;}
-    db.products.push({id:uid('product'),name,category:CATEGORIES[f.category]?f.category:'otros',price:price===''?null:asMoney(price),stock:null});persist();render();toast('Producto agregado al catálogo.');
+    if(!barcodeValid(barcode)||barcode&&productByBarcode(barcode)){toast('Ingrese un código de barras válido y no repetido.','error');return;}
+    db.products.push({id:uid('product'),name,category:CATEGORIES[f.category]?f.category:'otros',price:price===''?null:asMoney(price),barcode,stock:null});
+    persist();render();toast('Producto agregado al catálogo.');
   }
   function processNewRoom(){
     const f=readForm('new-room-form'),number=String(f.number||'').trim().toUpperCase();if(!/^[A-Z0-9-]{1,8}$/.test(number)){toast('El número admite letras, cifras y guiones (máximo 8).','error');return;}
