@@ -559,6 +559,85 @@
   });
   return [main,...extras];
 }
+  function syncCheckinVariosForm(){
+  const form=document.getElementById('checkin-form');
+  if(!form)return;
+  const values=readForm('checkin-form');
+  for(const row of ui.checkinVarios||[]){
+    if(values[row.key+'__qty']!==undefined)row.quantity=values[row.key+'__qty'];
+    if(values[row.key+'__room']!==undefined)row.roomKey=values[row.key+'__room'];
+  }
+}
+  function quoteCheckinVarios(d){
+  const assigned=checkinAssignments(d),validKeys=new Set(assigned.map(e=>e.key));
+  const rows=[],byProduct=new Map();
+  let cents=0;
+  for(const row of ui.checkinVarios||[]){
+    const p=productOf(row.productId),quantity=Number(row.quantity);
+    if(!p||p.price===null||!Number.isFinite(Number(p.price))||Number(p.price)<=0||
+       !Number.isSafeInteger(moneyCents(p.price))||moneyCents(p.price)<=0)
+      return {error:'Un producto agregado no tiene precio válido. Revise la lista de Varios.'};
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)
+      return {error:'La cantidad de '+p.name+' debe ser un número entero entre 1 y 1000.'};
+    if(!validKeys.has(row.roomKey))return {error:'Seleccione una habitación válida para el consumo '+p.name+'.'};
+    const lineCents=moneyCents(p.price)*quantity;
+    if(!Number.isSafeInteger(lineCents)||cents+lineCents>100000000)
+      return {error:'El total de Varios excede el límite de esta operación.'};
+    cents+=lineCents;
+    const count=(byProduct.get(p.id)||0)+quantity;byProduct.set(p.id,count);
+    if(p.stock!==null&&count>Number(p.stock))
+      return {error:'Inventario insuficiente de '+p.name+'. Disponibles: '+p.stock+', solicitados: '+count+'.'};
+    rows.push({key:row.key,roomKey:row.roomKey,product:p,productId:p.id,quantity,
+      price:asMoney(p.price),total:asMoney(lineCents/100)});
+  }
+  return {items:rows,total:asMoney(cents/100),error:null};
+}
+  function filterCheckinProducts(query){
+  const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const needle=norm(query);
+  if(!needle)return [];
+  return db.products.filter(p=>p.price!==null&&Number(p.price)>0&&
+    (norm(p.name).includes(needle)||norm(CATEGORIES[p.category]||p.category).includes(needle)))
+    .sort(sortProduct).slice(0,12);
+}
+  function renderCheckinProductResults(query){
+  const matches=filterCheckinProducts(query);
+  if(!String(query||'').trim())return '<p class="mini-caption">Escriba el nombre de un producto, por ejemplo: agua, cola, galleta o champú.</p>';
+  if(!matches.length)return '<p class="mini-caption">No hay productos con precio definido que coincidan. Revise el catálogo en Varios.</p>';
+  return matches.map(p=>`<div class="checkin-product-result">
+    <div><strong>${esc(p.name)}</strong><small>${esc(CATEGORIES[p.category]||p.category)} · ${p.stock===null?'Stock sin conteo':p.stock+' unidades disponibles'}</small></div>
+    <span>${money(p.price)}</span>
+    ${btn('Agregar','checkin-add-product','btn-secondary btn-sm',`type="button" data-id="${esc(p.id)}" ${p.stock!==null&&p.stock<=0?'disabled':''}`)}
+  </div>`).join('');
+}
+  function renderCheckinVarios(d){
+  const assignments=checkinAssignments(d);
+  const roomOptions=assignments.map((room,i)=>[room.key,
+    (room.roomId?'Hab. '+(roomOf(room.roomId)?.number||'—'):i===0?'Habitación principal':'Habitación '+(i+1)+' (sin asignar)')]);
+  const quote=quoteCheckinVarios(d),total=quote.error?'Revisar consumos':money(quote.total);
+  return `<section class="group-rooms checkin-varios" aria-label="Varios para este huésped">
+    <div class="group-rooms-heading"><div><strong>Varios para este mismo huésped</strong>
+    <p>Busque productos y agréguelos al momento del ingreso. Cada consumo se cargará a la habitación que elija.</p></div>
+    <span class="checkin-varios-counter">${(ui.checkinVarios||[]).length} producto(s) seleccionados</span></div>
+    <div class="field checkin-varios-search"><label for="checkin-varios-search">Buscar producto en Varios</label>
+      <input type="search" id="checkin-varios-search" autocomplete="off" placeholder="Buscar agua, gaseosa, galletas, aseo…" value="${esc(ui.checkinProductSearch||'')}">
+    </div>
+    <div class="checkin-product-results" id="checkin-product-results" aria-live="polite">${renderCheckinProductResults(ui.checkinProductSearch)}</div>
+    <div class="checkin-varios-selected" id="checkin-varios-selected">${(ui.checkinVarios||[]).map((row,i)=>{
+      const p=productOf(row.productId),subtotal=p?Number(p.price||0)*Number(row.quantity||0):0;
+      return `<div class="checkin-vario-row"><div class="checkin-vario-heading"><strong>${i+1}. ${esc(p?.name||'Producto no disponible')}</strong>
+        ${btn('Quitar','checkin-remove-product','btn-secondary btn-sm',`type="button" data-id="${esc(row.key)}"`)}</div>
+        <div class="checkin-vario-fields">
+          ${field('Cantidad',row.key+'__qty',row.quantity,{id:row.key+'-qty',type:'number',min:1,max:1000,step:1,required:true})}
+          ${select('Cargar a habitación',row.key+'__room',roomOptions,row.roomKey,'required',row.key+'-room')}
+          <div class="checkin-vario-subtotal"><span>Subtotal</span><strong id="${esc(row.key)}-subtotal">${money(subtotal)}</strong></div>
+        </div></div>`;
+    }).join('')||'<p class="mini-caption">Todavía no se han agregado consumos. También puede hacerlo posteriormente desde la cuenta de la habitación.</p>'}</div>
+    ${quote.error?`<p class="discount-rule-warning">${esc(quote.error)}</p>`:''}
+    <div class="group-breakdown-line group-breakdown-total checkin-varios-total"><span>Total de Varios</span><strong id="checkin-varios-total">${total}</strong></div>
+    <p class="mini-caption">Los Varios nunca tienen descuento. Se agregan al saldo de la habitación y al cálculo de cobro, y descuentan existencias si existe inventario registrado.</p>
+  </section>`;
+}
   function checkinGroupEstimate(d){
   const nights=getNightCount(d.arrival,d.departure),entries=checkinAssignments(d);
   const items=entries.map(e=>{
