@@ -310,7 +310,7 @@
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula o RUC personal','document',g.document,{required:true,placeholder:'10 dígitos o 13 terminados en 001',maxlength:13})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por cédula o RUC de persona natural</label><input id="lookup-${scope}" inputmode="numeric" maxlength="13" placeholder="10 dígitos o 13 terminados en 001" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
+  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
@@ -551,6 +551,47 @@
         <button class="account-close" data-action="close-room-account" type="button" aria-label="Cerrar cuenta de habitación">×</button></div>
       <div class="account-dialog-body">${history}</div>
     </div></div>`;
+}
+  function roomDateValid(value){
+  return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&addIsoDays(value,0)===value&&value>=today();
+}
+  function roomPlanningDate(){
+  return ui.roomDateMode&&roomDateValid(ui.roomDate)?ui.roomDate:today();
+}
+  function roomPlanForDate(room,date=roomPlanningDate()){
+  const valid=roomDateValid(date)?date:today();
+  const booking=db.reservations.find(b=>b.roomId===room.id&&['pendiente','confirmada'].includes(b.status)&&b.arrival<=valid&&b.departure>valid)||null;
+  const stay=activeStays().find(s=>s.roomId===room.id&&s.arrival<=valid&&s.departure>valid)||null;
+  const arriving=db.reservations.filter(b=>b.roomId===room.id&&['pendiente','confirmada'].includes(b.status)&&b.arrival===valid);
+  const leaving=db.stays.filter(s=>s.roomId===room.id&&s.status==='activa'&&s.departure===valid);
+  let status='libre',label='Libre previsto',note='Sujeto a salidas y limpieza';
+  if(room.status==='arrendada'){status='arrendada';label='Arrendada';note='Fuera de operación';}
+  else if(stay){status='ocupada';label='Ocupada prevista';note='Hasta '+datePretty(stay.departure);}
+  else if(booking){status='reservadas';label='Reservada';note='Llega '+datePretty(booking.arrival)+' · Sale '+datePretty(booking.departure);}
+  else if(valid===today()&&room.status==='ocupada'){status='ocupada';label='Ocupada (estado actual)';note='Salida por confirmar';}
+  else if(room.status==='limpieza'){status='limpieza';label='Pendiente de limpieza';note='Limpieza no confirmada';}
+  return {status,label,note,room,stay,booking,arriving,leaving,day:valid};
+}
+  function roomPlansForDate(date=roomPlanningDate()){
+  return db.rooms.map(room=>roomPlanForDate(room,date));
+}
+  function roomPrintData(date=roomPlanningDate()){
+  const plans=roomPlansForDate(date);
+  const summary={occupied:plans.filter(p=>p.status==='ocupada').length,
+    reserved:plans.filter(p=>p.status==='reservadas').length,
+    free:plans.filter(p=>p.status==='libre').length,
+    cleaning:plans.filter(p=>p.status==='limpieza').length,
+    rented:plans.filter(p=>p.status==='arrendada').length};
+  const rows=plans.map(p=>({
+    number:String(p.room.number),type:LABELS[p.room.type]||p.room.type,
+    status:p.label,
+    arrival:p.booking?.arrival||p.stay?.arrival||p.arriving[0]?.arrival||'',
+    departure:p.booking?.departure||p.stay?.departure||p.leaving[0]?.departure||'',
+    note:p.note,
+    isArrival:p.arriving.length>0,
+    isDeparture:p.leaving.length>0
+  }));
+  return {date,summary,rows};
 }
   function reservedRoomIds(){
     const valid=new Set(db.rooms.filter(r=>r.status!=='arrendada').map(r=>r.id));
