@@ -1,3 +1,13 @@
+# Hotel Unicornio v0.11 — Panel de Varios plegable
+
+En **Registro / ingreso → 02 · Detalles de alojamiento**, la sección **«Varios para este mismo huésped»** aparece **cerrada por defecto**, con una cabecera compacta que muestra el nombre de la sección, cantidad de productos seleccionados y total de Varios. Toque la cabecera (o la flecha) para abrir o cerrar.
+
+Al abrir se muestran el buscador, la lista de productos, cantidades, habitación destino, subtotal y descripción. Al cerrar, los artículos **no se eliminan**: permanecen en la cuenta y en el total de hospedaje + consumos. El panel conserva su estado abierto al añadir o quitar productos; usa el elemento accesible HTML `details/summary`, admite teclado y no añade datos nuevos a Supabase.
+
+Los campos de cantidad y habitación destino siguen siendo validados por el cálculo y por el guardado, incluso cuando el panel está plegado. Esto evita que un campo oculto inválido bloquee el formulario de manera silenciosa. Se incluyen pruebas del estado inicial plegado, la expansión con artículos y la conservación de cálculos al plegar.
+
+---
+
 # Hotel Unicornio v0.10 — Pago verificado y cédula/RUC correctamente validados
 
 En **Registro / ingreso**, el método predeterminado pasa a ser **Efectivo**. El recepcionista no puede registrar el huésped sin confirmar que realmente recibió dinero o verificó la transferencia. Para efectivo debe escribir la cantidad físicamente entregada; el vuelto se calcula como antes. En transferencia, debe registrar la referencia bancaria y confirmar el abono acreditado. Un anticipo previo que cubra por completo la cuenta también se considera pagado.
