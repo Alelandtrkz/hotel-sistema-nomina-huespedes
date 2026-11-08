@@ -552,12 +552,50 @@
       <div class="account-dialog-body">${history}</div>
     </div></div>`;
 }
+  function roomOverviewCounts(){
+  const rooms=db.rooms,active=activeStays(),openStaysByRoom=new Map(active.map(s=>[s.roomId,s]));
+  const occupied=rooms.filter(r=>r.status==='ocupada').length;
+  const clean=rooms.filter(r=>r.status==='disponible').length;
+  const owing=rooms.filter(r=>r.status==='ocupada'&&openStaysByRoom.has(r.id)&&dueOf(openStaysByRoom.get(r.id))>0).length;
+  const receivable=asMoney(active.filter(s=>dueOf(s)>0).reduce((n,s)=>n+dueOf(s),0));
+  const roomIds=new Set(rooms.filter(r=>r.status!=='arrendada').map(r=>r.id));
+  const reserved=new Set(db.reservations.filter(b=>
+    ['pendiente','confirmada'].includes(b.status)&&b.departure>today()&&roomIds.has(b.roomId)
+  ).map(b=>b.roomId)).size;
+  return {occupied,clean,owing,reserved,receivable};
+}
+  function renderRoomsOverview(){
+  const c=roomOverviewCounts();
+  return `<div class="metrics rooms-overview" role="group" aria-label="Resumen numérico de habitaciones">
+    <div class="metric rooms-kpi rooms-kpi-occupied">
+      <div class="metric-top"><span class="metric-title">Ocupadas</span><span class="metric-icon" aria-hidden="true">⌂</span></div>
+      <div class="metric-value">${c.occupied}</div>
+      <div class="metric-sub">Con huéspedes alojados</div>
+    </div>
+    <div class="metric rooms-kpi rooms-kpi-clean">
+      <div class="metric-top"><span class="metric-title">Limpias</span><span class="metric-icon" aria-hidden="true">✓</span></div>
+      <div class="metric-value">${c.clean}</div>
+      <div class="metric-sub">Disponibles para ingresar</div>
+    </div>
+    <div class="metric rooms-kpi rooms-kpi-owing">
+      <div class="metric-top"><span class="metric-title">X/C</span><span class="metric-icon" aria-hidden="true">$</span></div>
+      <div class="metric-value">${c.owing}</div>
+      <div class="metric-sub">Ocupadas por cobrar · ${money(c.receivable)}</div>
+    </div>
+    <div class="metric rooms-kpi rooms-kpi-reserved">
+      <div class="metric-top"><span class="metric-title">Reservadas</span><span class="metric-icon" aria-hidden="true">▤</span></div>
+      <div class="metric-value">${c.reserved}</div>
+      <div class="metric-sub">Habitaciones apartadas desde hoy</div>
+    </div>
+  </div>`;
+}
   function renderRooms(){
     const filtered=db.rooms.filter(r=>(ui.roomFilter==='todos'||ui.roomFilter==='por-cobrar'||r.status===ui.roomFilter)&&(ui.roomTypeFilter==='todos'||r.type===ui.roomTypeFilter));
     const selected=roomOf(ui.selectedRoomId);
     const stay=selected?activeStays().find(s=>s.roomId===selected.id):null;
     const unpaid=activeStays().filter(s=>dueOf(s)>0),totalReceivable=asMoney(unpaid.reduce((n,s)=>n+dueOf(s),0));
     return head('Control operativo','Habitaciones','Toque una habitación para abrir su cuenta, revisar cargos y registrar pagos.',btn('Nuevo ingreso','go-ingreso'))+
+      renderRoomsOverview()+
       `<section class="panel"><div class="panel-head"><div><h2>Mapa de habitaciones</h2><p>${db.rooms.length} habitaciones · ${unpaid.length} con saldo por cobrar · total pendiente ${money(totalReceivable)}</p></div>${roomsLegend()}</div>
       <div class="filters"><select id="filter-room-status" aria-label="Filtrar por estado">${selectOptions([['todos','Todos los estados'],['disponible','Disponibles'],['ocupada','Ocupadas'],['por-cobrar','Ocupadas por cobrar'],['limpieza','Pendientes de limpieza'],['arrendada','Arrendadas']],ui.roomFilter)}</select><select id="filter-room-type" aria-label="Filtrar por tipo">${selectOptions([['todos','Todos los tipos'],...ROOM_TYPES.map(x=>[x,LABELS[x]])],ui.roomTypeFilter)}</select></div>
       <div class="room-grid">${filtered.filter(r=>ui.roomFilter!=='por-cobrar'||(r.status==='ocupada'&&activeStays().some(s=>s.roomId===r.id&&dueOf(s)>0))).length?filtered.filter(r=>ui.roomFilter!=='por-cobrar'||(r.status==='ocupada'&&activeStays().some(s=>s.roomId===r.id&&dueOf(s)>0))).map(roomTile).join(''):noRows('No hay habitaciones que coincidan con el filtro.')}</div></section>
