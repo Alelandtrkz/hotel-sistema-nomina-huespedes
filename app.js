@@ -2001,16 +2001,41 @@
     ['Saldo actual','','','',dueOf(stay)],['Vuelto pendiente','','','',pendingChangeOf(stay)]];
   downloadCsv(rows,'movimientos-habitacion-'+(room?.number||'s-n')+'-'+String(stay.id).replace(/[^a-z0-9-]/gi,'')+'.csv');
 }
+
+  function updateStockPreview(){
+    const form=document.getElementById('stock-form'),preview=document.getElementById('stock-preview');
+    if(!form||!preview)return;
+    const values=readForm('stock-form'),p=productOf(values.productId);
+    if(!p){preview.textContent='Seleccione un producto. Sin conteo no significa que haya cero unidades.';return;}
+    const l=values.location==='bodega'?'bodega':'nevera',b=locationStock(p,'bodega'),n=locationStock(p,'nevera');
+    preview.textContent=p.name+' · Nevera: '+stockDescription(n)+' · Bodega: '+stockDescription(b)+
+      ' · '+(values.mode==='traslado'?'Traslado desde ':values.mode==='conteo'?'Conteo en ':values.mode==='merma'?'Merma en ':'Ingreso en ')+l+
+      ' · Cantidad: '+(values.quantity===''?'sin indicar':values.quantity)+'.';
+  }
   function processStock(){
-    const f=readForm('stock-form'),p=productOf(f.productId),q=Number(f.quantity),mode=f.mode;
-    if(!p||!Number.isInteger(q)||q<0||q>100000||!['conteo','entrada','merma'].includes(mode)){toast('Seleccione un producto y cantidad válida.','error');return;}
-    if(mode!=='conteo'&&q===0){toast('Un ingreso o merma debe ser mayor que cero.','error');return;}
-    if(mode!=='conteo'&&p.stock===null){toast('Primero registre un conteo físico inicial.','error');return;}
-    if(mode==='merma'&&p.stock<q){toast('La merma supera el stock registrado.','error');return;}
-    const previous=p.stock;
-    p.stock=mode==='conteo'?q:mode==='entrada'?p.stock+q:p.stock-q;
-    db.stockMoves.push({id:uid('stock'),productId:p.id,productName:p.name,mode,quantity:q,previous,after:p.stock,shift:f.shift||'dia',operator:String(f.operator||'').trim(),note:String(f.note||'').trim(),createdAt:new Date().toISOString()});
-    persist();render();toast('Inventario actualizado: '+p.name+' · '+p.stock+' unidades.');
+    const f=readForm('stock-form'),p=productOf(f.productId),raw=String(f.quantity??'').trim(),q=Number(raw),mode=f.mode,
+      loc=f.location==='bodega'?'bodega':'nevera',target=loc==='nevera'?'bodega':'nevera';
+    if(!p||!['nevera','bodega'].includes(f.location)||raw===''||!Number.isSafeInteger(q)||q<0||q>100000||!['conteo','entrada','merma','traslado'].includes(mode)){
+      toast('Seleccione producto, ubicación y cantidad entera válida.','error');return;
+    }
+    if(mode!=='conteo'&&q===0){toast('Entradas, mermas y traslados deben superar cero.','error');return;}
+    const prev=locationStock(p,loc),other=locationStock(p,target);
+    if(mode!=='conteo'&&prev===null){toast('Primero registre el conteo físico inicial de '+loc+'.','error');return;}
+    if((mode==='merma'||mode==='traslado')&&prev<q){toast('No hay suficientes unidades en '+loc+'.','error');return;}
+    if(mode==='traslado'&&other===null){toast('Primero registre el conteo físico inicial de '+target+'.','error');return;}
+    const next=mode==='conteo'?q:mode==='entrada'?prev+q:prev-q;
+    if(!Number.isSafeInteger(next)||next>100000||mode==='traslado'&&other+q>100000){toast('La cantidad resultante supera el máximo.','error');return;}
+    const description=mode==='conteo'?'Fijar '+q+' unidades en '+loc:mode==='traslado'?'Trasladar '+q+' unidades de '+loc+' a '+target:
+      mode==='entrada'?'Agregar '+q+' unidades a '+loc:'Retirar '+q+' unidades de '+loc;
+    if(!window.confirm(description+' para '+p.name+'. ¿Confirmar?'))return;
+    p[loc==='nevera'?'stockNevera':'stockBodega']=next;
+    if(mode==='traslado')p[target==='nevera'?'stockNevera':'stockBodega']=other+q;
+    syncProductStock(p);
+    db.stockMoves.push({id:uid('stock'),productId:p.id,productName:p.name,mode,location:loc,destination:mode==='traslado'?target:null,
+      quantity:q,previous:prev,after:next,shift:receptionShift(),operator:String(f.operator||'').trim(),note:String(f.note||'').trim(),
+      createdAt:new Date().toISOString()});
+    persist();render();toast('Inventario guardado: '+p.name+' · Nevera '+stockDescription(locationStock(p,'nevera'))+
+      ' · Bodega '+stockDescription(locationStock(p,'bodega'))+'.');
   }
   function processCashOut(){
     const f=readForm('cash-out-form'),amount=Number(f.amount);
@@ -2280,6 +2305,7 @@
   },true);
   document.addEventListener('input',e=>{
     const target=e.target;
+    if(['stock-product','stock-location','stock-mode','stock-quantity'].includes(target.id))updateStockPreview();
     if(target.id==='room-extra-search-input'){
       const results=document.getElementById('room-extra-search-results');
       if(results)results.innerHTML=renderRoomProductMatches(target.value);
