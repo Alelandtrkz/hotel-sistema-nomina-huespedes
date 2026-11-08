@@ -5,7 +5,7 @@ const tail='  render();\n})();';
 assert(src.trimEnd().endsWith(tail),'Se cambió el cierre de app.js');
 const code=src.trimEnd().slice(0,-tail.length)+
   '\nwindow.__multi={getDB:()=>db,setDB:d=>{db=d;},getUI:()=>ui,setUI:val=>{ui=val;},defaults,checkinAssignments,checkinGroupEstimate,'+
-  'prepareCheckinGroup,processCheckin,renderCheckin,renderRoomAccount,renderClientRooms,quoteCheckinVarios,filterCheckinProducts,renderCheckinVarios,stayHistoryEvents,'+
+  'prepareCheckinGroup,processCheckin,renderCheckin,renderRoomAccount,renderClientRooms,quoteCheckinVarios,filterCheckinProducts,renderCheckinVarios,stayHistoryEvents,checkEcuadorDocument,validDoc,getGuestByDocument,saveGuest,'+
   'activeStays,totalOf,paidOf,dueOf,cashTotals,availableForCheckin,roomOf};\n})();';
 const messages=[],fake={
   toasts:{append(n){messages.push(n.textContent);}},
@@ -27,11 +27,11 @@ const t=ctx.window.__multi;
 function test(name,func){try{func();console.log('PASS',name);}catch(e){console.error('FAIL',name,e.stack||e);process.exitCode=1;}}
 const DATE='2026-11-07',NEXT='2026-11-08';
 function bookingForm(extra={}){
- return {firstName:'FAMILIA',secondName:'',lastName:'PRUEBA',secondLastName:'',document:'0000000000',
+ return {firstName:'FAMILIA',secondName:'',lastName:'PRUEBA',secondLastName:'',document:'0102030400',
   phone:'0990000000',email:'',arrival:DATE,departure:NEXT,
   type:'individual',roomId:'room-02',breakfast:'sin',batch1__type:'doble',
   batch1__breakfast:'sin',batch1__roomId:'room-03',
-  paymentMethod:'efectivo',paymentAmount:'50',cashTendered:'55',changeStatus:'pendiente',shift:'dia',invoice:'no',notes:'',
+  paymentMethod:'efectivo',paymentVerified:'si',paymentAmount:'50',cashTendered:'55',changeStatus:'pendiente',shift:'dia',invoice:'no',notes:'',
   ...extra};
 }
 function wrapForm(data){return {data,elements:{namedItem(){return null;}}};}
@@ -176,7 +176,7 @@ test('El formulario NO muestra importe editable y permite descuento solo por tra
  const d=setup([]);
  const html=t.renderCheckin();
  assert(!html.includes('name="paymentAmount"'));
- assert(html.includes('Por cobrar (tarifa normal)'));
+ assert(html.includes('Por cobrar · requiere doble confirmación'));
  assert(html.includes('Transferencia · precio con descuento'));
  assert(!html.includes('Efectivo · precio con descuento'));
  assert(!html.includes('Por cobrar · precio con descuento'));
@@ -184,7 +184,7 @@ test('El formulario NO muestra importe editable y permite descuento solo por tra
 });
 test('Por cobrar conserva el total pendiente y no registra dinero en caja',()=>{
  const d=setup([]);
- const form=bookingForm({paymentMethod:'por_cobrar',paymentAmount:'9999',cashTendered:'200'});
+ const form=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'si',paymentAmount:'9999',cashTendered:'200'});
  fake['checkin-form']=wrapForm(form);
  const p=t.prepareCheckinGroup(form);
  assert.equal(p.error,null);
@@ -338,7 +338,7 @@ test('Agregar dos Varios al ingreso deja productos en cuenta y descuenta stock u
 test('Varios cargados en ingreso Por cobrar quedan pendientes y NO entran en caja',()=>{
  const d=setup([]);
  t.setUI({...t.getUI(),checkinVarios:[{key:'checkvar1',productId:'producto-002',quantity:'3',roomKey:'principal'}]});
- const form=bookingForm({paymentMethod:'por_cobrar',cashTendered:'999',paymentAmount:'999'});
+ const form=bookingForm({paymentMethod:'por_cobrar',creditConfirmed:'si',cashTendered:'999',paymentAmount:'999'});
  fake['checkin-form']=wrapForm(form);
  t.processCheckin();
  assert.equal(d.stays[0].payments.length,0);
