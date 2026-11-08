@@ -1,3 +1,20 @@
+# Hotel Unicornio v0.14 — Indicadores de Habitaciones interactivos
+
+Las cuatro tarjetas del resumen de Habitaciones ahora son **botones de filtro** vinculados al mapa y totalmente utilizables con ratón, teclado y pantalla táctil:
+
+- **Ocupadas:** muestra únicamente habitaciones cuyo estado físico es ocupado.
+- **Limpias:** muestra las habitaciones disponibles.
+- **X/C:** muestra habitaciones ocupadas que tienen cuentas activas con saldo por cobrar.
+- **Reservadas:** muestra las habitaciones asignadas a reservas pendientes o confirmadas, vigentes o futuras, sin duplicar habitaciones con varias reservas y sin incluir reservas vencidas, canceladas, arrendadas o sin asignación.
+
+Pulsar una tarjeta cambia el filtro de **Todos los estados** y lleva el foco visual hacia el mapa. Pulsar **la misma tarjeta otra vez** restablece «Todos los estados». Se marca visualmente el indicador activo y tiene `aria-pressed` para lectores de pantalla. El filtro «Reservadas» se añadió también al selector de estados. Los filtros por tipo siguen respetándose y se conserva la apertura de la cuenta de cada habitación desde su tarjeta del mapa.
+
+**Importante:** una habitación con una reserva futura puede estar disponible actualmente. «Reservadas» es una clasificación de reservas, no un nuevo estado físico; la reserva no modifica el estado real de esa habitación. Las cuatro cifras no se suman necesariamente.
+
+No se alteran datos ni tablas de Supabase. Las nuevas pruebas verifican clics de los indicadores, mapa filtrado, reservas, selección repetida y coexistencia con el filtro de tipo; se ejecutan antes de publicar con GitHub Actions.
+
+---
+
 # Hotel Unicornio v0.13 — Resumen numérico en Habitaciones
 
 En la vista **Habitaciones** se muestran cuatro tarjetas de resumen **encima** del mapa, con el diseño del Panel general:
