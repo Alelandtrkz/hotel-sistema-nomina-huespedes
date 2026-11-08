@@ -1,3 +1,17 @@
+# Hotel Unicornio v0.9 — Varios al ingreso y descuento solo por transferencia
+
+**Cambios de recepción:** el precio especial **solo se habilita con la modalidad «Transferencia · precio con descuento»**. Las demás opciones disponibles son «Por cobrar», «Efectivo» y «Transferencia» con tarifa normal. Se rechazan las antiguas modalidades de descuento en efectivo o por cobrar, incluso si un navegador intenta enviarlas manualmente.
+
+**Varios en el check-in:** debajo de «Más habitaciones para este mismo cliente», en la sección «Varios para este mismo huésped», el recepcionista puede buscar por nombre o categoría (búsqueda sin distinción de mayúsculas/acentos), pulsar «Agregar», configurar cantidad y seleccionar la habitación a la que se carga cada producto. Muestra precios, subtotales, inventario disponible y total de consumos. Se permite agregar varios artículos y destinar cada uno a una habitación distinta del mismo titular.
+
+**Cuentas y caja:** el resumen de ingreso muestra hospedaje + Varios. Si elige «Por cobrar», no se registra ingreso de dinero y todo queda como saldo pendiente de cada habitación. Si paga en efectivo o transferencia, se cobra el total junto y se distribuye entre las cuentas, incluido cada consumo; el vuelto en efectivo se registra una sola vez. El descuento de transferencia solo afecta al precio del hospedaje y jamás a Varios ni personas adicionales. Cada consumo queda registrado en el historial de la habitación y reduce el stock si previamente hubo conteo. Se verifican en conjunto las existencias solicitadas, incluso cuando se agrega el mismo producto en varios renglones.
+
+**Límites:** los productos sin precio definido no se pueden agregar desde el buscador hasta configurar su importe; los stock sin conteo se identifican como tal. Los consumos no se cobran dos veces en caja, ya que son cargos contra las cuentas de alojamiento. Los datos históricos de huéspedes y estadías no se alteran. Las mismas condiciones de alojamiento sin desayuno, sin solicitud de factura y sin reservas con tarifa confirmada se mantienen para la modalidad especial. Las obligaciones tributarias aplicables al hotel no se modifican.
+
+**Pruebas y seguridad:** se ejecutan pruebas automáticas de caja, habitaciones, autenticación, validaciones de descuento, búsqueda, Varios y stock antes de publicar. El sistema continúa siendo beta, con acceso autenticado y control de revisión en Supabase; los cobros e inventarios aún requieren transacciones atómicas y auditoría antes de su uso comercial.
+
+---
+
 # Hotel Unicornio v0.8 — Cobro automático, por cobrar y tarifas con descuento
 
 En **Registro / ingreso → 03 · Forma de pago y tarifa** ya no existe un campo donde se pueda escribir manualmente el importe del hospedaje. El valor se calcula con **tarifa por habitación × noches**, descontando anticipos vinculados. No se ha alterado el importe histórico de ninguna estadía.
