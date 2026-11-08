@@ -1386,6 +1386,30 @@
   }
   const paidDirect=x=>!x.stayId&&['efectivo','transferencia'].includes(x.method);
   const productOf=id=>db.products.find(p=>p.id===id);
+
+  // La ubicación se contabiliza por separado; un valor null significa 'sin conteo',
+  // nunca cero. El stock total solo se conoce tras contar Nevera y Bodega.
+  const locationStock=(product,location)=>{
+    const n=product?.[location==='bodega'?'stockBodega':'stockNevera'];
+    return Number.isSafeInteger(n)&&n>=0?n:null;
+  };
+  function syncProductStock(product){
+    const nevera=locationStock(product,'nevera'),bodega=locationStock(product,'bodega');
+    product.stock=nevera===null||bodega===null?null:nevera+bodega;
+    return product.stock;
+  }
+  const stockDescription=n=>n===null?'Sin conteo':n+' uds.';
+  function productStockClass(p){
+    const n=locationStock(p,'nevera'),b=locationStock(p,'bodega');
+    return n===null?'stock-unknown':n===0?(b!==null&&b>0?'stock-refill':'stock-empty'):n<=5?'stock-low':'stock-normal';
+  }
+  function stockAvailabilityLabel(p){
+    const n=locationStock(p,'nevera'),b=locationStock(p,'bodega');
+    if(n===null)return 'Nevera sin conteo';
+    if(n===0)return b!==null&&b>0?'Reponer nevera':'Agotado en nevera';
+    return 'Nevera: '+n+' uds.';
+  }
+
   const normalizeBarcode=value=>String(value||'').trim().toUpperCase();
   const barcodeValid=code=>!code||/^[A-Z0-9._-]{3,64}$/.test(code);
   const productByBarcode=code=>db.products.find(p=>normalizeBarcode(p.barcode)===normalizeBarcode(code)&&normalizeBarcode(code));
@@ -1441,7 +1465,7 @@
     const sold=db.extras.slice().reverse();
     const amount=sold.reduce((x,e)=>x+e.price*e.quantity,0);
     return head('Recepción / ventas','Varios y productos','Venta directa en caja o cargo a una habitación, con control opcional de existencias.',btn('Inventario de productos','go-inventario','btn-secondary'))+
-    `<section class="panel"><div class="panel-head"><div><h2>Catálogo de precios</h2><p>Precios transcritos del cartel proporcionado; sin precio visible en helados y lavandería.</p></div><div class="filters"><select id="filter-product-category" aria-label="Filtrar categoría">${selectOptions([['todas','Todas las categorías'],...Object.entries(CATEGORIES)],ui.productCategory)}</select><span class="mini-caption">${filtered.length} productos. Seleccione uno para agregarlo a la venta.</span></div><div class="product-catalog-grid">${filtered.map(p=>`<button class="product-item" type="button" data-action="pick-product" data-id="${esc(p.id)}"><strong>${esc(p.name)}</strong><small>${esc(catName(p.category))}</small><span class="price">${p.price===null?'Precio sin definir':money(p.price)}</span><small>Stock: ${p.stock===null?'pendiente de conteo':p.stock}</small></button>`).join('')}</div></section>
+    `<section class="panel"><div class="panel-head"><div><h2>Catálogo de precios</h2><p>Precios transcritos del cartel proporcionado; sin precio visible en helados y lavandería.</p></div><div class="filters"><select id="filter-product-category" aria-label="Filtrar categoría">${selectOptions([['todas','Todas las categorías'],...Object.entries(CATEGORIES)],ui.productCategory)}</select><span class="mini-caption">${filtered.length} productos. Seleccione uno para agregarlo a la venta.</span></div><div class="product-catalog-grid">${filtered.map(p=>`<button class="product-item ${productStockClass(p)}" type="button" data-action="pick-product" data-id="${esc(p.id)}" ${p.price===null?'disabled title="Configure primero el precio en Tarifas y ajustes"':locationStock(p,'nevera')===0?'disabled title="Sin existencias en nevera"':''}><strong>${esc(p.name)}</strong><small>${esc(catName(p.category))}</small><span class="price">${p.price===null?'Precio por definir':money(p.price)}</span><small>${esc(stockAvailabilityLabel(p))}</small></button>`).join('')}</div></section>
     <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Registrar venta de un producto</h2><p>Venta de mostrador o consumo cargado al huésped</p></div></div><div class="panel-body"><form id="extra-form"><div class="form-grid cols-2">
       ${select('Destino del consumo','stayId',destinations(),ui.extraTarget||'caja')}
       ${select('Producto','productId',[['','Seleccione el producto'],...db.products.slice().sort(sortProduct).map(p=>[p.id,`${catName(p.category)} · ${p.name}`])],'','required')}
@@ -1822,13 +1846,17 @@
     if(product?.price===null||!Number.isFinite(Number(product?.price))||Number(product.price)<=0){toast('Este artículo no tiene tarifa definida; configúrela o utilice el formulario de cobro adicional.','error');return false;}
     if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione forma de pago válida.','error');return false;}
     if(!stayId&&f.method==='transferencia'&&!String(f.reference||'').trim()){toast('La transferencia necesita un código de referencia.','error');return false;}
-    if(product.stock!==null&&product.stock<q){toast('No hay existencias suficientes de '+product.name+'.','error');return false;}
+    const nevera=locationStock(product,'nevera');
+    if(nevera!==null&&nevera<q){toast('No hay suficientes unidades de '+product.name+' en nevera. Reponga desde bodega.','error');return false;}
+    if(nevera===null&&product.stock!==null&&product.stock<q){toast('No hay existencias suficientes de '+product.name+'.','error');return false;}
     const createdAt=new Date().toISOString();
     const tender=stayId?{received:asMoney(product.price*q),change:0,status:'no_aplica'}:resolveTendered(f.cashTendered,f.method,asMoney(product.price*q),f.changeStatus);
     if(tender.error){toast(tender.error,'error');return false;}
     const e=paidCashRecord({id:uid('extra'),stayId,productId:product.id,productName:product.name,category:product.category||'otros',quantity:q,price:asMoney(product.price),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt},tender,createdAt,f.shift||'dia');
     db.extras.push(e);
-    if(product.stock!==null){product.stock-=q;db.stockMoves.push({id:uid('stock'),productId:product.id,productName:product.name,mode:'venta',quantity:q,shift:f.shift||'dia',operator:e.operator,createdAt,note:stayId?'Cargo a habitación':'Venta directa'});}
+    if(nevera!==null){product.stockNevera=nevera-q;syncProductStock(product);}
+    else if(product.stock!==null)product.stock-=q;
+    if(nevera!==null||product.stock!==null)db.stockMoves.push({id:uid('stock'),productId:product.id,productName:product.name,location:'nevera',mode:'venta',quantity:q,shift:f.shift||'dia',operator:e.operator,createdAt,note:stayId?'Cargo a habitación':'Venta directa'});
     persist();return true;
   }
   function processExtra(){
@@ -2149,7 +2177,7 @@
         const values=readForm('checkin-form');syncCheckinVariosForm();
         ui.checkinDraft={...ui.checkinDraft,...values};
         const existing=(ui.checkinVarios||[]).filter(row=>row.productId===id).reduce((sum,row)=>sum+(Number(row.quantity)||0),0);
-        if(product.stock!==null&&existing+1>product.stock){toast('No quedan existencias disponibles de '+product.name+'.','error');break;}
+        if((locationStock(product,'nevera')??product.stock)!==null&&existing+1>(locationStock(product,'nevera')??product.stock)){toast('No quedan existencias en nevera de '+product.name+'.','error');break;}
         ui.checkinVariosSeq=Number(ui.checkinVariosSeq||0)+1;
         ui.checkinVarios.push({key:'checkvar'+ui.checkinVariosSeq,productId:id,quantity:'1',roomKey:'principal'});
         render();break;
