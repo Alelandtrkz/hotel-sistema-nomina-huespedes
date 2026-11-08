@@ -31,3 +31,7 @@ jobs:
         run: node tests/auth-recovery.test.cjs
       - name: Verificar un cliente con varias habitaciones
         run: node tests/multihabitacion.test.cjs
+      - name: Comprobar mapa e indicadores de habitaciones
+        run: node tests/rooms-overview.test.cjs
+      - name: Comprobar fechas y reporte imprimible de camarería
+        run: node tests/room-date-housekeeping.test.cjs
