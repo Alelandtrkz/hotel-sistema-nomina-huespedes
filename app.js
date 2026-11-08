@@ -639,17 +639,22 @@
   </section>`;
 }
   function checkinGroupEstimate(d){
-  const nights=getNightCount(d.arrival,d.departure),entries=checkinAssignments(d);
-  const items=entries.map(e=>{
-    const normalNightly=rate(e.type,e.breakfast);
-    const nightly=checkinNightRate(e.type,e.breakfast,d.paymentMethod);
-    const total=nightly===null||!Number.isFinite(nightly)||nightly<0?null:asMoney(nights*nightly);
-    const saved=total===null||normalNightly===null?0:asMoney((normalNightly-nightly)*nights);
-    return {...e,nightly,normalNightly,total,saved};
-  });
-  const total=items.some(e=>e.total===null)?null:asMoney(items.reduce((sum,e)=>sum+e.total,0));
-  return {nights,items,total};
-}
+    const nights=getNightCount(d.arrival,d.departure),entries=checkinAssignments(d);
+    const quote=quoteCheckinVarios(d);
+    const items=entries.map(e=>{
+      const normalNightly=rate(e.type,e.breakfast);
+      const nightly=checkinNightRate(e.type,e.breakfast,d.paymentMethod);
+      const total=nightly===null||!Number.isFinite(nightly)||nightly<0?null:asMoney(nights*nightly);
+      const saved=total===null||normalNightly===null?0:asMoney((normalNightly-nightly)*nights);
+      const variosTotal=quote.error?0:asMoney(quote.items.filter(row=>row.roomKey===e.key).reduce((n,row)=>n+row.total,0));
+      return {...e,nightly,normalNightly,total,saved,variosTotal,
+        fullTotal:total===null?null:asMoney(total+variosTotal)};
+    });
+    const total=items.some(e=>e.total===null)?null:asMoney(items.reduce((sum,e)=>sum+e.total,0));
+    const variosTotal=quote.error?null:quote.total;
+    const grandTotal=total===null||variosTotal===null?null:asMoney(total+variosTotal);
+    return {nights,items,total,variosTotal,grandTotal,variosError:quote.error||null,varios:quote.items||[]};
+  }
   function prepareCheckinGroup(d,booking=null){
     const choice=checkinPaymentChoice(d.paymentMethod);
     if(!choice)return {error:'Seleccione una forma de pago válida.'};
@@ -661,6 +666,7 @@
         return {error:'Los precios con descuento proporcionados son únicamente sin desayuno. Seleccione sin desayuno o utilice tarifa normal.'};
     }
     const estimate=checkinGroupEstimate(d);
+    if(estimate.variosError)return {error:estimate.variosError};
     if(!Number.isSafeInteger(estimate.nights)||estimate.nights<1)return {error:'La fecha de salida debe ser posterior a la de entrada.'};
     if(estimate.items.length<1||estimate.items.length>db.rooms.filter(r=>r.type!=='arrendada').length)
       return {error:'Número de habitaciones inválido para este ingreso.'};
@@ -679,7 +685,7 @@
       ids.add(room.id);
     }
     const depositCents=moneyCents(booking?.advance||0);
-    const firstTotalCents=moneyCents(estimate.items[0].total),totalCents=moneyCents(estimate.total);
+    const firstTotalCents=moneyCents(estimate.items[0].total),totalCents=moneyCents(estimate.grandTotal);
     if(!Number.isSafeInteger(depositCents)||depositCents<0||depositCents>firstTotalCents)
       return {error:'El anticipo excede el precio de la habitación principal. Revise la reserva.'};
     const amountCents=choice.method==='por_cobrar'?0:totalCents-depositCents;
@@ -693,7 +699,7 @@
     if(tender.error)return {error:tender.error};
     let remaining=amountCents,changeAllocated=false;
     const items=estimate.items.map((e,i)=>{
-      const advanceCents=i===0?depositCents:0,chargeCents=moneyCents(e.total)-advanceCents;
+      const advanceCents=i===0?depositCents:0,chargeCents=moneyCents(e.total)+moneyCents(e.variosTotal)-advanceCents;
       const appliedCents=Math.min(remaining,chargeCents);remaining-=appliedCents;
       const assignedChangeCents=!changeAllocated&&appliedCents>0?moneyCents(tender.change):0;
       if(appliedCents>0)changeAllocated=true;
