@@ -30,8 +30,6 @@
     ['por_cobrar','Por cobrar (tarifa normal)'],
     ['efectivo','Efectivo (tarifa normal)'],
     ['transferencia','Transferencia (tarifa normal)'],
-    ['por_cobrar_descuento','Por cobrar · precio con descuento'],
-    ['efectivo_descuento','Efectivo · precio con descuento'],
     ['transferencia_descuento','Transferencia · precio con descuento']
   ];
   const ROOM_LISTS = {
@@ -112,6 +110,7 @@
     const choice=checkinPaymentChoice(paymentMethod);
     if(!choice)return null;
     if(!choice.discounted)return normal;
+    if(choice.method!=='transferencia')return null;
     if(breakfast!=='sin'||normal===null)return null;
     const floor=DISCOUNT_ROOM_RATES[type];
     return Number.isFinite(floor)&&normal>=floor?floor:null;
@@ -227,14 +226,14 @@
       changeDeliveredAt:details.status==='dado'?stamp:null,
       changeDeliveredShift:details.status==='dado'?shift:null};
   }
-  function cashChangeFields(prefix){
+  function cashChangeFields(prefix,data={}){
     return `<div class="cash-tender-zone section-gap" id="${prefix}-cash-zone">
       <div class="form-grid cols-2">
-        ${field('Efectivo entregado por el huésped (USD)','cashTendered','',{id:prefix+'-cashTendered',type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
+        ${field('Efectivo entregado por el huésped (USD)','cashTendered',data.cashTendered??'',{id:prefix+'-cashTendered',type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
         <div class="field"><label>Vuelto calculado</label><div class="cash-change-preview" id="${prefix}-change-preview">${money(0)}</div></div>
       </div>
       <div class="cash-choice-wrap hidden" id="${prefix}-change-choice"><div class="mini-caption">¿Qué sucedió con el vuelto?</div>
-        <div class="cash-choice-items"><label><input type="radio" name="changeStatus" value="dado"><span>Vuelto dado</span></label><label><input type="radio" name="changeStatus" value="pendiente"><span>Vuelto no dado · pendiente</span></label></div>
+        <div class="cash-choice-items"><label><input type="radio" name="changeStatus" value="dado" ${data.changeStatus==='dado'?'checked':''}><span>Vuelto dado</span></label><label><input type="radio" name="changeStatus" value="pendiente" ${data.changeStatus==='pendiente'?'checked':''}><span>Vuelto no dado · pendiente</span></label></div>
         <p class="mini-caption">Si queda pendiente, se registra como dinero que el hotel debe entregar al cliente.</p>
       </div>
     </div>`;
@@ -289,7 +288,7 @@
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula ecuatoriana','document',g.document,{required:true,placeholder:'10 dígitos',maxlength:10})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por número de cédula</label><input id="lookup-${scope}" inputmode="numeric" maxlength="10" placeholder="Ingrese 10 dígitos" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
+  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'por_cobrar',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
@@ -560,28 +559,114 @@
   });
   return [main,...extras];
 }
-  function checkinGroupEstimate(d){
-  const nights=getNightCount(d.arrival,d.departure),entries=checkinAssignments(d);
-  const items=entries.map(e=>{
-    const normalNightly=rate(e.type,e.breakfast);
-    const nightly=checkinNightRate(e.type,e.breakfast,d.paymentMethod);
-    const total=nightly===null||!Number.isFinite(nightly)||nightly<0?null:asMoney(nights*nightly);
-    const saved=total===null||normalNightly===null?0:asMoney((normalNightly-nightly)*nights);
-    return {...e,nightly,normalNightly,total,saved};
-  });
-  const total=items.some(e=>e.total===null)?null:asMoney(items.reduce((sum,e)=>sum+e.total,0));
-  return {nights,items,total};
+  function syncCheckinVariosForm(){
+  const form=document.getElementById('checkin-form');
+  if(!form)return;
+  const values=readForm('checkin-form');
+  for(const row of ui.checkinVarios||[]){
+    if(values[row.key+'__qty']!==undefined)row.quantity=values[row.key+'__qty'];
+    if(values[row.key+'__room']!==undefined)row.roomKey=values[row.key+'__room'];
+  }
 }
+  function quoteCheckinVarios(d){
+  const assigned=checkinAssignments(d),validKeys=new Set(assigned.map(e=>e.key));
+  const rows=[],byProduct=new Map();
+  let cents=0;
+  for(const row of ui.checkinVarios||[]){
+    const p=productOf(row.productId),quantity=Number(row.quantity);
+    if(!p||p.price===null||!Number.isFinite(Number(p.price))||Number(p.price)<=0||
+       !Number.isSafeInteger(moneyCents(p.price))||moneyCents(p.price)<=0)
+      return {error:'Un producto agregado no tiene precio válido. Revise la lista de Varios.'};
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)
+      return {error:'La cantidad de '+p.name+' debe ser un número entero entre 1 y 1000.'};
+    if(!validKeys.has(row.roomKey))return {error:'Seleccione una habitación válida para el consumo '+p.name+'.'};
+    const lineCents=moneyCents(p.price)*quantity;
+    if(!Number.isSafeInteger(lineCents)||cents+lineCents>100000000)
+      return {error:'El total de Varios excede el límite de esta operación.'};
+    cents+=lineCents;
+    const count=(byProduct.get(p.id)||0)+quantity;byProduct.set(p.id,count);
+    if(p.stock!==null&&count>Number(p.stock))
+      return {error:'Inventario insuficiente de '+p.name+'. Disponibles: '+p.stock+', solicitados: '+count+'.'};
+    rows.push({key:row.key,roomKey:row.roomKey,product:p,productId:p.id,quantity,
+      price:asMoney(p.price),total:asMoney(lineCents/100)});
+  }
+  return {items:rows,total:asMoney(cents/100),error:null};
+}
+  function filterCheckinProducts(query){
+  const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const needle=norm(query);
+  if(!needle)return [];
+  return db.products.filter(p=>p.price!==null&&Number(p.price)>0&&
+    (norm(p.name).includes(needle)||norm(CATEGORIES[p.category]||p.category).includes(needle)))
+    .sort(sortProduct).slice(0,12);
+}
+  function renderCheckinProductResults(query){
+  const matches=filterCheckinProducts(query);
+  if(!String(query||'').trim())return '<p class="mini-caption">Escriba el nombre de un producto, por ejemplo: agua, cola, galleta o champú.</p>';
+  if(!matches.length)return '<p class="mini-caption">No hay productos con precio definido que coincidan. Revise el catálogo en Varios.</p>';
+  return matches.map(p=>`<div class="checkin-product-result">
+    <div><strong>${esc(p.name)}</strong><small>${esc(CATEGORIES[p.category]||p.category)} · ${p.stock===null?'Stock sin conteo':p.stock+' unidades disponibles'}</small></div>
+    <span>${money(p.price)}</span>
+    ${btn('Agregar','checkin-add-product','btn-secondary btn-sm',`type="button" data-id="${esc(p.id)}" ${p.stock!==null&&p.stock<=0?'disabled':''}`)}
+  </div>`).join('');
+}
+  function renderCheckinVarios(d){
+  const assignments=checkinAssignments(d);
+  const roomOptions=assignments.map((room,i)=>[room.key,
+    (room.roomId?'Hab. '+(roomOf(room.roomId)?.number||'—'):i===0?'Habitación principal':'Habitación '+(i+1)+' (sin asignar)')]);
+  const quote=quoteCheckinVarios(d),total=quote.error?'Revisar consumos':money(quote.total);
+  return `<section class="group-rooms checkin-varios" aria-label="Varios para este huésped">
+    <div class="group-rooms-heading"><div><strong>Varios para este mismo huésped</strong>
+    <p>Busque productos y agréguelos al momento del ingreso. Cada consumo se cargará a la habitación que elija.</p></div>
+    <span class="checkin-varios-counter">${(ui.checkinVarios||[]).length} producto(s) seleccionados</span></div>
+    <div class="field checkin-varios-search"><label for="checkin-varios-search">Buscar producto en Varios</label>
+      <input type="search" id="checkin-varios-search" autocomplete="off" placeholder="Buscar agua, gaseosa, galletas, aseo…" value="${esc(ui.checkinProductSearch||'')}">
+    </div>
+    <div class="checkin-product-results" id="checkin-product-results" aria-live="polite">${renderCheckinProductResults(ui.checkinProductSearch)}</div>
+    <div class="checkin-varios-selected" id="checkin-varios-selected">${(ui.checkinVarios||[]).map((row,i)=>{
+      const p=productOf(row.productId),subtotal=p?Number(p.price||0)*Number(row.quantity||0):0;
+      return `<div class="checkin-vario-row"><div class="checkin-vario-heading"><strong>${i+1}. ${esc(p?.name||'Producto no disponible')}</strong>
+        ${btn('Quitar','checkin-remove-product','btn-secondary btn-sm',`type="button" data-id="${esc(row.key)}"`)}</div>
+        <div class="checkin-vario-fields">
+          ${field('Cantidad',row.key+'__qty',row.quantity,{id:row.key+'-qty',type:'number',min:1,max:1000,step:1,required:true})}
+          ${select('Cargar a habitación',row.key+'__room',roomOptions,row.roomKey,'required',row.key+'-room')}
+          <div class="checkin-vario-subtotal"><span>Subtotal</span><strong id="${esc(row.key)}-subtotal">${money(subtotal)}</strong></div>
+        </div></div>`;
+    }).join('')||'<p class="mini-caption">Todavía no se han agregado consumos. También puede hacerlo posteriormente desde la cuenta de la habitación.</p>'}</div>
+    ${quote.error?`<p class="discount-rule-warning">${esc(quote.error)}</p>`:''}
+    <div class="group-breakdown-line group-breakdown-total checkin-varios-total"><span>Total de Varios</span><strong id="checkin-varios-total">${total}</strong></div>
+    <p class="mini-caption">Los Varios nunca tienen descuento. Se agregan al saldo de la habitación y al cálculo de cobro, y descuentan existencias si existe inventario registrado.</p>
+  </section>`;
+}
+  function checkinGroupEstimate(d){
+    const nights=getNightCount(d.arrival,d.departure),entries=checkinAssignments(d);
+    const quote=quoteCheckinVarios(d);
+    const items=entries.map(e=>{
+      const normalNightly=rate(e.type,e.breakfast);
+      const nightly=checkinNightRate(e.type,e.breakfast,d.paymentMethod);
+      const total=nightly===null||!Number.isFinite(nightly)||nightly<0?null:asMoney(nights*nightly);
+      const saved=total===null||normalNightly===null?0:asMoney((normalNightly-nightly)*nights);
+      const variosTotal=quote.error?0:asMoney(quote.items.filter(row=>row.roomKey===e.key).reduce((n,row)=>n+row.total,0));
+      return {...e,nightly,normalNightly,total,saved,variosTotal,
+        fullTotal:total===null?null:asMoney(total+variosTotal)};
+    });
+    const total=items.some(e=>e.total===null)?null:asMoney(items.reduce((sum,e)=>sum+e.total,0));
+    const variosTotal=quote.error?null:quote.total;
+    const grandTotal=total===null||variosTotal===null?null:asMoney(total+variosTotal);
+    return {nights,items,total,variosTotal,grandTotal,variosError:quote.error||null,varios:quote.items||[]};
+  }
   function prepareCheckinGroup(d,booking=null){
     const choice=checkinPaymentChoice(d.paymentMethod);
     if(!choice)return {error:'Seleccione una forma de pago válida.'};
     if(choice.discounted){
+      if(choice.method!=='transferencia')return {error:'El precio con descuento solo está autorizado para transferencia.'};
       if(d.invoice==='si')return {error:'La tarifa con descuento está disponible únicamente sin solicitud de factura.'};
       if(booking)return {error:'No se puede aplicar el descuento a una reserva previamente confirmada con otra tarifa. Mantenga el precio de la reserva.'};
       if(checkinAssignments(d).some(item=>item.breakfast!=='sin'))
         return {error:'Los precios con descuento proporcionados son únicamente sin desayuno. Seleccione sin desayuno o utilice tarifa normal.'};
     }
     const estimate=checkinGroupEstimate(d);
+    if(estimate.variosError)return {error:estimate.variosError};
     if(!Number.isSafeInteger(estimate.nights)||estimate.nights<1)return {error:'La fecha de salida debe ser posterior a la de entrada.'};
     if(estimate.items.length<1||estimate.items.length>db.rooms.filter(r=>r.type!=='arrendada').length)
       return {error:'Número de habitaciones inválido para este ingreso.'};
@@ -600,7 +685,7 @@
       ids.add(room.id);
     }
     const depositCents=moneyCents(booking?.advance||0);
-    const firstTotalCents=moneyCents(estimate.items[0].total),totalCents=moneyCents(estimate.total);
+    const firstTotalCents=moneyCents(estimate.items[0].total),totalCents=moneyCents(estimate.grandTotal);
     if(!Number.isSafeInteger(depositCents)||depositCents<0||depositCents>firstTotalCents)
       return {error:'El anticipo excede el precio de la habitación principal. Revise la reserva.'};
     const amountCents=choice.method==='por_cobrar'?0:totalCents-depositCents;
@@ -614,7 +699,7 @@
     if(tender.error)return {error:tender.error};
     let remaining=amountCents,changeAllocated=false;
     const items=estimate.items.map((e,i)=>{
-      const advanceCents=i===0?depositCents:0,chargeCents=moneyCents(e.total)-advanceCents;
+      const advanceCents=i===0?depositCents:0,chargeCents=moneyCents(e.total)+moneyCents(e.variosTotal)-advanceCents;
       const appliedCents=Math.min(remaining,chargeCents);remaining-=appliedCents;
       const assignedChangeCents=!changeAllocated&&appliedCents>0?moneyCents(tender.change):0;
       if(appliedCents>0)changeAllocated=true;
@@ -648,12 +733,14 @@
   </section>`;
 }
   function renderCheckinBreakdown(d){
-  const {items,nights,total}=checkinGroupEstimate(d);
+  const {items,nights,total,variosTotal,grandTotal}=checkinGroupEstimate(d);
   return `<div class="group-breakdown" id="checkin-room-breakdown">
     ${items.map((e,i)=>`<div class="group-breakdown-line"><div><strong>${e.roomId?`Hab. ${esc(roomOf(e.roomId)?.number||'—')}`:i===0?'Habitación principal':'Habitación adicional '+(i+1)}</strong>
-      <small>${esc(LABELS[e.type])} · ${e.breakfast==='con'?'Con desayuno':'Sin desayuno'} · ${nights} noche(s)${e.saved>0?' · Ahorra '+money(e.saved):''}</small></div>
+      <small>${esc(LABELS[e.type])} · ${e.breakfast==='con'?'Con desayuno':'Sin desayuno'} · ${nights} noche(s)${e.saved>0?' · Ahorra '+money(e.saved):''}${e.variosTotal>0?' · Varios '+money(e.variosTotal):''}</small></div>
       <strong>${e.total===null?'Por definir':money(e.total)}</strong></div>`).join('')}
-    <div class="group-breakdown-line group-breakdown-total"><span>Total de ${items.length} habitación(es)</span><strong>${total===null?'Por definir':money(total)}</strong></div>
+    <div class="group-breakdown-line"><span>Hospedaje</span><strong>${total===null?'Por definir':money(total)}</strong></div>
+    <div class="group-breakdown-line"><span>Varios agregados al ingresar</span><strong>${variosTotal===null?'Revisar':money(variosTotal)}</strong></div>
+    <div class="group-breakdown-line group-breakdown-total"><span>Total hospedaje + Varios</span><strong>${grandTotal===null?'Por definir':money(grandTotal)}</strong></div>
   </div>`;
 }
   function checkinRoomOptions(d,excluded=[]){
@@ -664,7 +751,7 @@
   }
   function renderCheckin(){
     const d=ui.checkinDraft||(ui.checkinDraft=initialCheckinDraft());
-    const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=checkinNightRate(d.type,d.breakfast,d.paymentMethod),stayTotal=estimation.total,b=reservationOf(ui.prefillBookingId);
+    const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=checkinNightRate(d.type,d.breakfast,d.paymentMethod),stayTotal=estimation.grandTotal,b=reservationOf(ui.prefillBookingId);
     const bookedAdvance=b?.advance||0,initialPayment=checkinPaymentAmount(d,stayTotal,bookedAdvance),choice=checkinPaymentChoice(d.paymentMethod);
     return head('Recepción / check-in','Registrar ingreso de huésped','Búsqueda por cédula y asignación de una o varias habitaciones al mismo titular.',btn('Ver habitaciones','go-habitaciones','btn-secondary'))+
     `<div class="two-col"><section class="panel"><div class="panel-head"><div><h2>Nuevo registro de hospedaje</h2><p>Complete los datos obligatorios marcados con *</p></div>${tag('Ingreso','success')}</div>
@@ -680,14 +767,15 @@
           <div class="field"><label>Precio por noche</label><div class="readonly-info" id="checkin-night-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</div></div>
         </div>
         ${renderCheckinExtraRooms(d)}
+        ${renderCheckinVarios(d)}
         <div class="form-section-label">03 · Forma de pago y tarifa</div><div class="form-grid cols-3">
           ${select('Forma de pago / precio','paymentMethod',CHECKIN_PAYMENT_OPTIONS,d.paymentMethod||'por_cobrar')}
           ${select('Turno de recepción','shift',[['dia','Día'],['noche','Noche']],d.shift||'dia')}
           <div class="field"><label>Valor a cobrar en el ingreso</label><div class="readonly-info checkin-auto-pay" id="checkin-auto-payment">${money(initialPayment)}</div><div class="field-hint">Se calcula automáticamente; no puede modificarse.</div></div>
           <div class="field ${choice?.method==='transferencia'?'':'hidden'}" id="transfer-field"><label for="transferCode">Código de transferencia *</label><input name="transferCode" id="transferCode" placeholder="Referencia bancaria" value="${esc(d.transferCode||'')}"></div>
-        </div>${cashChangeFields('checkin')}
+        </div>${cashChangeFields('checkin',d)}
         <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'Por cobrar: no se registra dinero recibido y el importe queda como saldo pendiente.':'Pago completo: se aplica automáticamente el saldo de todas las habitaciones, descontando cualquier anticipo registrado.'}</div>
-        <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">La tarifa con descuento solo aplica sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
+        <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">El descuento solo se permite por transferencia, sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
         <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
           ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice)}
         </div><div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
@@ -697,8 +785,8 @@
         <div class="form-actions"><button class="btn btn-secondary" type="reset" id="clear-checkin">Limpiar formulario</button><button class="btn btn-primary" type="submit">Registrar ingreso</button></div>
       </form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Resumen de hospedaje</h2><p>Tarifa según configuración del hotel</p></div></div><div class="panel-body">
-        <div class="summary-card"><div class="mini-caption">TOTAL DE LAS HABITACIONES</div><div class="summary-price" id="checkin-total">${stayTotal===null?'Por definir':money(stayTotal)}</div>${renderCheckinBreakdown(d)}<div class="summary-pair"><span>Tarifa por noche principal</span><strong id="preview-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</strong></div><div class="summary-pair"><span>Noches por habitación</span><strong id="preview-nights">${nights}</strong></div><div class="summary-pair"><span>Anticipo registrado</span><strong id="preview-advance">${money(bookedAdvance)}</strong></div><div class="summary-pair"><span>Pago automático al ingreso</span><strong id="preview-payment">${money(initialPayment)}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong id="preview-due">${stayTotal===null?'Por definir':money(Math.max(0,stayTotal-bookedAdvance-initialPayment))}</strong></div></div>
-        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa. Los descuentos corresponden exclusivamente a hospedaje sin desayuno y sin solicitud de factura; no incluyen personas adicionales, niños ni consumos. La facturación debe cumplir las obligaciones tributarias aplicables.</div>
+        <div class="summary-card"><div class="mini-caption">TOTAL HOSPEDAJE + VARIOS</div><div class="summary-price" id="checkin-total">${stayTotal===null?'Por definir':money(stayTotal)}</div>${renderCheckinBreakdown(d)}<div class="summary-pair"><span>Tarifa por noche principal</span><strong id="preview-rate">${checkinRateLabel(d.type,d.breakfast,d.paymentMethod)}</strong></div><div class="summary-pair"><span>Noches por habitación</span><strong id="preview-nights">${nights}</strong></div><div class="summary-pair"><span>Anticipo registrado</span><strong id="preview-advance">${money(bookedAdvance)}</strong></div><div class="summary-pair"><span>Pago automático al ingreso</span><strong id="preview-payment">${money(initialPayment)}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong id="preview-due">${stayTotal===null?'Por definir':money(Math.max(0,stayTotal-bookedAdvance-initialPayment))}</strong></div></div>
+        <div class="dashboard-notice"><strong>Tarifa aplicable:</strong> habitación completa. El descuento solo se selecciona al pagar por transferencia para hospedaje sin desayuno y sin solicitud de factura; no se aplica a personas adicionales, niños ni consumos. La facturación debe cumplir las obligaciones tributarias aplicables.</div>
         <div class="dashboard-notice"><strong>Facturación:</strong> esta versión registra la solicitud, pero no emite comprobantes electrónicos del SRI.</div>
       </div></aside></div>`;
   }
@@ -861,8 +949,9 @@
   function updatePricing(){
     const ci=document.getElementById('checkin-form');
     if(ci){
+      syncCheckinVariosForm();
       const f=readForm('checkin-form'),estimate=checkinGroupEstimate(f),n=estimate.nights,
-        r=checkinNightRate(f.type,f.breakfast,f.paymentMethod),total=estimate.total,
+        r=checkinNightRate(f.type,f.breakfast,f.paymentMethod),total=estimate.grandTotal,
         adv=reservationOf(ui.prefillBookingId)?.advance||0,paid=checkinPaymentAmount(f,total,adv),
         choice=checkinPaymentChoice(f.paymentMethod);
       const mappings={
@@ -884,6 +973,13 @@
       const invalidDiscount=Boolean(choice?.discounted&&(f.invoice==='si'||Boolean(ui.prefillBookingId)||
         checkinAssignments(f).some(item=>item.breakfast!=='sin')));
       document.getElementById('discount-rule-warning')?.classList.toggle('hidden',!invalidDiscount);
+      const variosQuote=quoteCheckinVarios(f);
+      const variosTotal=document.getElementById('checkin-varios-total');
+      if(variosTotal)variosTotal.textContent=variosQuote.error?'Revisar consumos':money(variosQuote.total);
+      for(const row of ui.checkinVarios||[]){
+        const el=document.getElementById(row.key+'-subtotal'),product=productOf(row.productId);
+        if(el)el.textContent=product&&Number.isFinite(Number(row.quantity))?money(asMoney(product.price*Number(row.quantity))):'Revise la cantidad';
+      }
       const breakdown=document.getElementById('checkin-room-breakdown');
       if(breakdown)breakdown.outerHTML=renderCheckinBreakdown(f);
       for(const entry of estimate.items.slice(1)){
@@ -972,12 +1068,13 @@
     const guest=b.document&&getGuestByDocument(b.document);
     const parsed=guest?guestData(guest):splitFullName(b.name);
     ui.prefillBookingId=id;
-    ui.checkinExtraRooms=[];ui.checkinRowSeq=0;
+    ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';
     ui.checkinDraft={...initialCheckinDraft(),...parsed,document:b.document||'',phone:b.phone||'',arrival:b.arrival,departure:b.departure,type:b.type,roomId:b.roomId||'',breakfast:b.breakfast,notes:b.notes||'',paymentAmount:'0'};
     ui.lookup.ingreso=b.document||'';ui.lookupMessage.ingreso=guest?'Huésped encontrado y vinculado a la reserva.':'Reserva precargada; confirme los datos del huésped.';ui.lookupResult.ingreso=Boolean(guest);
     navigate('ingreso');
   }
   function processCheckin(){
+  syncCheckinVariosForm();
   const f=readForm('checkin-form'),g=guestData(f),b=reservationOf(ui.prefillBookingId);
   if(!g.firstName||!g.lastName||!validDoc(g.document)||!g.phone){
     toast('Complete nombre, apellido, cédula de 10 dígitos y teléfono.','error');return;
@@ -988,7 +1085,7 @@
     toast('Complete los cuatro datos de facturación.','error');return;
   }
   if(plan.items.length>1){
-    const msg=`¿Registrar ${plan.items.length} habitaciones al mismo cliente (${g.firstName} ${g.lastName}) por ${money(plan.total)}? Cada habitación tendrá su saldo y su propia salida.`;
+    const msg=`¿Registrar ${plan.items.length} habitaciones al mismo cliente (${g.firstName} ${g.lastName})? Hospedaje: ${money(plan.total)} · Varios: ${money(plan.variosTotal)} · Total: ${money(plan.grandTotal)}. Cada habitación tendrá su saldo y su propia salida.`;
     if(!window.confirm(msg))return;
   }
   const guest=saveGuest(g),checkinAt=new Date().toISOString();
@@ -1016,14 +1113,35 @@
     return s;
   });
   db.stays.push(...stays);
+  // Los consumos quedan ligados a la cuenta de la habitación, no como ventas directas.
+  // La cantidad y el precio se validaron antes de cualquier escritura en estado/stock.
+  const at=checkinAt,shift=f.shift==='noche'?'noche':'dia';
+  for(const line of plan.varios){
+    const index=plan.items.findIndex(item=>item.key===line.roomKey);
+    if(index<0)throw new Error('Habitación destino de Varios no encontrada');
+    const stay=stays[index],product=line.product;
+    db.extras.push({
+      id:uid('extra'),stayId:stay.id,productId:product.id,
+      productName:product.name,category:product.category||'otros',
+      quantity:line.quantity,price:line.price,method:'pendiente',reference:'',
+      shift,operator:'Recepción / ingreso',createdAt:at,cashTendered:0,cashChange:0,
+      changeStatus:'no_aplica',changeDeliveredAt:null,changeDeliveredShift:null
+    });
+    if(product.stock!==null){
+      const before=product.stock;product.stock-=line.quantity;
+      db.stockMoves.push({id:uid('stock'),productId:product.id,productName:product.name,
+        mode:'venta',quantity:line.quantity,previous:before,after:product.stock,shift,
+        operator:'Recepción / ingreso',createdAt:at,note:'Varios cargados durante ingreso a Hab. '+(roomOf(stay.roomId)?.number||'—')});
+    }
+  }
   for(const item of plan.items)item.room.status='ocupada';
   if(b)b.status='alojada';
   persist();
   ui.selectedRoomId=stays[0].roomId;ui.selectedStayId=stays[0].id;
-  ui.checkinDraft=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;
+  ui.checkinDraft=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';
   ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;ui.prefillBookingId=null;
   navigate('habitaciones');
-  toast('Ingreso registrado: '+stays.length+' habitación(es) a nombre de '+guestName(guest)+'. Saldo conjunto '+money(asMoney(stays.reduce((sum,s)=>sum+dueOf(s),0)))+'.');
+  toast('Ingreso registrado: '+stays.length+' habitación(es) y '+plan.varios.length+' consumo(s) a nombre de '+guestName(guest)+'. Saldo conjunto '+money(asMoney(stays.reduce((sum,s)=>sum+dueOf(s),0)))+'.');
 }
   function processReservation(){
     const f=readForm('reservation-form');const name=String(f.name||'').trim(),phone=String(f.phone||'').trim(),n=getNightCount(f.arrival,f.departure),advance=Number(f.advance||0),document=String(f.document||'').trim();
@@ -1272,7 +1390,7 @@
     const action=el.dataset.action,id=el.dataset.id;
     switch(action){
       case 'go-inicio':navigate('inicio');break;
-      case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
+      case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
       case 'go-salidas':navigate('salidas');break;
@@ -1301,6 +1419,23 @@
       case 'remove-checkin-room':{
         ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
         ui.checkinExtraRooms=(ui.checkinExtraRooms||[]).filter(r=>r.key!==id);
+        for(const row of ui.checkinVarios||[])if(row.roomKey===id)row.roomKey='principal';
+        render();break;
+      }
+      case 'checkin-add-product':{
+        const product=productOf(id);if(!product||product.price===null||Number(product.price)<=0){toast('Producto no disponible o sin precio.','error');break;}
+        const values=readForm('checkin-form');syncCheckinVariosForm();
+        ui.checkinDraft={...ui.checkinDraft,...values};
+        const existing=(ui.checkinVarios||[]).filter(row=>row.productId===id).reduce((sum,row)=>sum+(Number(row.quantity)||0),0);
+        if(product.stock!==null&&existing+1>product.stock){toast('No quedan existencias disponibles de '+product.name+'.','error');break;}
+        ui.checkinVariosSeq=Number(ui.checkinVariosSeq||0)+1;
+        ui.checkinVarios.push({key:'checkvar'+ui.checkinVariosSeq,productId:id,quantity:'1',roomKey:'principal'});
+        render();break;
+      }
+      case 'checkin-remove-product':{
+        const values=readForm('checkin-form');syncCheckinVariosForm();
+        ui.checkinDraft={...ui.checkinDraft,...values};
+        ui.checkinVarios=(ui.checkinVarios||[]).filter(row=>row.key!==id);
         render();break;
       }
       case 'select-room':ui.selectedRoomId=id;navigate('habitaciones');break;
@@ -1325,7 +1460,7 @@
       }
       case 'start-room-checkin':{
         const room=roomOf(id);if(!room||room.status!=='disponible'){toast('Esta habitación no está disponible.','error');break;}
-        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft={...initialCheckinDraft(),type:room.type==='flex_aire'?'individual':room.type==='flex_ventilador'?'individual_ventilador':room.type,roomId:room.id};ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
+        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft={...initialCheckinDraft(),type:room.type==='flex_aire'?'individual':room.type==='flex_ventilador'?'individual_ventilador':room.type,roomId:room.id};ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       }
       case 'mark-room-dirty':{
         const room=roomOf(id);if(!room||room.status==='ocupada'||room.status==='arrendada'){toast('No puede cambiar una habitación ocupada o arrendada.','error');break;}
@@ -1338,7 +1473,7 @@
       case 'checkin-booking':startBookedCheckin(id);break;
       case 'checkin-guest':{
         const g=guestOf(id);if(!g)break;
-        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft={...initialCheckinDraft(),...guestData(g)};ui.lookup.ingreso=g.document;ui.lookupMessage.ingreso='Huésped encontrado: '+guestName(g);ui.lookupResult.ingreso=true;navigate('ingreso');break;
+        ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft={...initialCheckinDraft(),...guestData(g)};ui.lookup.ingreso=g.document;ui.lookupMessage.ingreso='Huésped encontrado: '+guestName(g);ui.lookupResult.ingreso=true;navigate('ingreso');break;
       }
       case 'unlink-booking':ui.prefillBookingId=null;render();break;
       case 'cancel-booking':{
@@ -1375,7 +1510,15 @@
   });
   document.addEventListener('input',e=>{
     const target=e.target;
-    if(target.closest('#checkin-form')){ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};updatePricing();}
+    if(target.id==='checkin-varios-search'){
+      ui.checkinProductSearch=target.value;
+      const list=document.getElementById('checkin-product-results');
+      if(list)list.innerHTML=renderCheckinProductResults(target.value);
+      return;
+    }
+    if(target.closest('#checkin-form')){
+      ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};syncCheckinVariosForm();updatePricing();
+    }
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
     if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
   });
@@ -1387,7 +1530,7 @@
     if(el.id==='filter-room-status'){ui.roomFilter=el.value;render();return;}
     if(el.id==='filter-room-type'){ui.roomTypeFilter=el.value;render();return;}
     if(el.closest('#checkin-form')){
-      ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
+      ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};syncCheckinVariosForm();
       if(['type','arrival','departure','roomId'].includes(el.name)||/^batch\d+__(?:type|roomId)$/.test(el.name))refreshRoomSelect('ingreso');
       if(el.name==='paymentMethod'){const transfer=checkinPaymentChoice(el.value)?.method==='transferencia';document.getElementById('transfer-field')?.classList.toggle('hidden',!transfer);}
       if(el.name==='invoice')document.getElementById('invoice-fields')?.classList.toggle('hidden',el.value!=='si');
@@ -1408,11 +1551,11 @@
   });
   document.addEventListener('reset',e=>{
     const id=e.target?.id;
-    if(id==='checkin-form'){e.preventDefault();ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinDraft=initialCheckinDraft();ui.prefillBookingId=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;render();}
+    if(id==='checkin-form'){e.preventDefault();ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinDraft=initialCheckinDraft();ui.prefillBookingId=null;ui.lookup.ingreso='';ui.lookupMessage.ingreso='';ui.lookupResult.ingreso=false;render();}
     else if(id==='reservation-form'){e.preventDefault();ui.reservationDraft=initialReservationDraft();render();}
     else if(id==='guest-form'){e.preventDefault();ui.lookup.huespedes='';ui.lookupMessage.huespedes='';ui.lookupResult.huespedes=false;render();}
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ui.selectedHistoryStayId){ui.selectedHistoryStayId=null;render();return;}if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
+  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='checkin-varios-search'){e.preventDefault();return;}if(e.key==='Escape'&&ui.selectedHistoryStayId){ui.selectedHistoryStayId=null;render();return;}if(e.key==='Escape'&&ui.selectedRoomId){ui.selectedRoomId=null;render();return;}if(e.key==='Enter'&&e.target.matches('#lookup-ingreso,#lookup-huespedes')){e.preventDefault();lookupGuest(e.target.id.replace('lookup-',''));}});
   document.getElementById('year').textContent=String(new Date().getFullYear());
   document.getElementById('current-date').textContent=new Intl.DateTimeFormat('es-EC',{weekday:'short',day:'numeric',month:'long',year:'numeric'}).format(new Date());
   if(window.hotelCloud?.ready){
