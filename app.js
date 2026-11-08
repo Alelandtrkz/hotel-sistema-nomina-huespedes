@@ -552,6 +552,12 @@
       <div class="account-dialog-body">${history}</div>
     </div></div>`;
 }
+  function reservedRoomIds(){
+    const valid=new Set(db.rooms.filter(r=>r.status!=='arrendada').map(r=>r.id));
+    return new Set(db.reservations.filter(b=>
+      ['pendiente','confirmada'].includes(b.status)&&b.departure>today()&&valid.has(b.roomId)
+    ).map(b=>b.roomId));
+  }
   function roomOverviewCounts(){
   const rooms=db.rooms,active=activeStays(),openStaysByRoom=new Map(active.map(s=>[s.roomId,s]));
   const occupied=rooms.filter(r=>r.status==='ocupada').length;
@@ -559,47 +565,46 @@
   const owingStays=rooms.filter(r=>r.status==='ocupada').map(r=>openStaysByRoom.get(r.id)).filter(s=>s&&dueOf(s)>0);
   const owing=owingStays.length;
   const receivable=asMoney(owingStays.reduce((n,s)=>n+dueOf(s),0));
-  const roomIds=new Set(rooms.filter(r=>r.status!=='arrendada').map(r=>r.id));
-  const reserved=new Set(db.reservations.filter(b=>
-    ['pendiente','confirmada'].includes(b.status)&&b.departure>today()&&roomIds.has(b.roomId)
-  ).map(b=>b.roomId)).size;
+  const reserved=reservedRoomIds().size;
   return {occupied,clean,owing,reserved,receivable};
 }
   function renderRoomsOverview(){
-  const c=roomOverviewCounts();
-  return `<div class="metrics rooms-overview" role="group" aria-label="Resumen numérico de habitaciones">
-    <div class="metric rooms-kpi rooms-kpi-occupied">
-      <div class="metric-top"><span class="metric-title">Ocupadas</span><span class="metric-icon" aria-hidden="true">⌂</span></div>
-      <div class="metric-value">${c.occupied}</div>
-      <div class="metric-sub">Con huéspedes alojados</div>
-    </div>
-    <div class="metric rooms-kpi rooms-kpi-clean">
-      <div class="metric-top"><span class="metric-title">Limpias</span><span class="metric-icon" aria-hidden="true">✓</span></div>
-      <div class="metric-value">${c.clean}</div>
-      <div class="metric-sub">Disponibles para ingresar</div>
-    </div>
-    <div class="metric rooms-kpi rooms-kpi-owing">
-      <div class="metric-top"><span class="metric-title">X/C</span><span class="metric-icon" aria-hidden="true">$</span></div>
-      <div class="metric-value">${c.owing}</div>
-      <div class="metric-sub">Ocupadas por cobrar · ${money(c.receivable)}</div>
-    </div>
-    <div class="metric rooms-kpi rooms-kpi-reserved">
-      <div class="metric-top"><span class="metric-title">Reservadas</span><span class="metric-icon" aria-hidden="true">▤</span></div>
-      <div class="metric-value">${c.reserved}</div>
-      <div class="metric-sub">Habitaciones apartadas desde hoy</div>
-    </div>
-  </div>`;
-}
+    const c=roomOverviewCounts();
+    const card=(filter,title,number,subtitle,symbol,kind,label)=>{
+      const selected=ui.roomFilter===filter;
+      return `<button type="button" class="metric rooms-kpi rooms-kpi-${kind}${selected?' is-active':''}"
+        data-action="filter-room-summary" data-id="${filter}" aria-pressed="${selected}"
+        aria-label="${esc(label)}" title="${esc(label)}">
+        <div class="metric-top"><span class="metric-title">${title}</span><span class="metric-icon" aria-hidden="true">${symbol}</span></div>
+        <div class="metric-value">${number}</div>
+        <div class="metric-sub">${subtitle}</div>
+      </button>`;
+    };
+    return `<div class="metrics rooms-overview" role="group" aria-label="Filtrar mapa por indicadores de habitaciones">
+      ${card('ocupada','Ocupadas',c.occupied,'Con huéspedes alojados','⌂','occupied','Filtrar el mapa por habitaciones ocupadas')}
+      ${card('disponible','Limpias',c.clean,'Disponibles para ingresar','✓','clean','Filtrar el mapa por habitaciones limpias y disponibles')}
+      ${card('por-cobrar','X/C',c.owing,'Ocupadas por cobrar · '+money(c.receivable),'$','owing','Filtrar el mapa por habitaciones ocupadas con saldo por cobrar')}
+      ${card('reservadas','Reservadas',c.reserved,'Habitaciones apartadas desde hoy','▤','reserved','Filtrar el mapa por habitaciones con reservas activas o futuras')}
+    </div>`;
+  }
   function renderRooms(){
-    const filtered=db.rooms.filter(r=>(ui.roomFilter==='todos'||ui.roomFilter==='por-cobrar'||r.status===ui.roomFilter)&&(ui.roomTypeFilter==='todos'||r.type===ui.roomTypeFilter));
+    const reservedIds=reservedRoomIds();
+    const debtIds=new Set(activeStays().filter(st=>dueOf(st)>0).map(st=>st.roomId));
+    const filtered=db.rooms.filter(r=>{
+      if(ui.roomTypeFilter!=='todos'&&r.type!==ui.roomTypeFilter)return false;
+      if(ui.roomFilter==='todos')return true;
+      if(ui.roomFilter==='reservadas')return reservedIds.has(r.id);
+      if(ui.roomFilter==='por-cobrar')return r.status==='ocupada'&&debtIds.has(r.id);
+      return r.status===ui.roomFilter;
+    });
     const selected=roomOf(ui.selectedRoomId);
-    const stay=selected?activeStays().find(s=>s.roomId===selected.id):null;
-    const unpaid=activeStays().filter(s=>dueOf(s)>0),totalReceivable=asMoney(unpaid.reduce((n,s)=>n+dueOf(s),0));
+    const stay=selected?activeStays().find(st=>st.roomId===selected.id):null;
+    const unpaid=activeStays().filter(st=>dueOf(st)>0),totalReceivable=asMoney(unpaid.reduce((n,st)=>n+dueOf(st),0));
     return head('Control operativo','Habitaciones','Toque una habitación para abrir su cuenta, revisar cargos y registrar pagos.',btn('Nuevo ingreso','go-ingreso'))+
       renderRoomsOverview()+
-      `<section class="panel"><div class="panel-head"><div><h2>Mapa de habitaciones</h2><p>${db.rooms.length} habitaciones · ${unpaid.length} con saldo por cobrar · total pendiente ${money(totalReceivable)}</p></div>${roomsLegend()}</div>
-      <div class="filters"><select id="filter-room-status" aria-label="Filtrar por estado">${selectOptions([['todos','Todos los estados'],['disponible','Disponibles'],['ocupada','Ocupadas'],['por-cobrar','Ocupadas por cobrar'],['limpieza','Pendientes de limpieza'],['arrendada','Arrendadas']],ui.roomFilter)}</select><select id="filter-room-type" aria-label="Filtrar por tipo">${selectOptions([['todos','Todos los tipos'],...ROOM_TYPES.map(x=>[x,LABELS[x]])],ui.roomTypeFilter)}</select></div>
-      <div class="room-grid">${filtered.filter(r=>ui.roomFilter!=='por-cobrar'||(r.status==='ocupada'&&activeStays().some(s=>s.roomId===r.id&&dueOf(s)>0))).length?filtered.filter(r=>ui.roomFilter!=='por-cobrar'||(r.status==='ocupada'&&activeStays().some(s=>s.roomId===r.id&&dueOf(s)>0))).map(roomTile).join(''):noRows('No hay habitaciones que coincidan con el filtro.')}</div></section>
+      `<section class="panel" id="room-map"><div class="panel-head"><div><h2>Mapa de habitaciones</h2><p>${db.rooms.length} habitaciones · ${unpaid.length} con saldo por cobrar · total pendiente ${money(totalReceivable)}</p></div>${roomsLegend()}</div>
+      <div class="filters"><select id="filter-room-status" aria-label="Filtrar por estado">${selectOptions([['todos','Todos los estados'],['disponible','Disponibles'],['ocupada','Ocupadas'],['por-cobrar','Ocupadas por cobrar'],['reservadas','Reservadas'],['limpieza','Pendientes de limpieza'],['arrendada','Arrendadas']],ui.roomFilter)}</select><select id="filter-room-type" aria-label="Filtrar por tipo">${selectOptions([['todos','Todos los tipos'],...ROOM_TYPES.map(x=>[x,LABELS[x]])],ui.roomTypeFilter)}</select></div>
+      <div class="room-grid">${filtered.length?filtered.map(roomTile).join(''):noRows('No hay habitaciones que coincidan con el filtro.')}</div></section>
       ${selected?renderRoomAccount(selected,stay):''}`;
   }
   function availableForCheckin(r,arrival,departure,excludeReservationId){
@@ -1515,6 +1520,14 @@
       case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinVariosOpen=false;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
+      case 'filter-room-summary':{
+        if(!['ocupada','disponible','por-cobrar','reservadas'].includes(id))break;
+        ui.roomFilter=ui.roomFilter===id?'todos':id;
+        ui.selectedRoomId=null;
+        render();
+        document.getElementById('room-map')?.scrollIntoView?.({behavior:'smooth',block:'start'});
+        break;
+      }
       case 'go-salidas':navigate('salidas');break;
       case 'go-configuracion':navigate('configuracion');break;
       case 'go-inventario':navigate('inventario');break;
