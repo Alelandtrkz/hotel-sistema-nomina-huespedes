@@ -246,7 +246,7 @@
       }
       if(!uiLoaded) {
         uiLoaded=true;
-        var script=document.createElement("script");script.src="./app.js?v=0.18-cuenta-movil";
+        var script=document.createElement("script");script.src="./app.js?v=0.19-turnos-controles";
         script.onerror=function(){status("No se pudo cargar la aplicación",true);};
         document.body.appendChild(script);
       }
