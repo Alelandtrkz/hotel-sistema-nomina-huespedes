@@ -189,6 +189,9 @@
   });
   const initialNights=Math.max(1,getNightCount(stay.arrival,stay.departure)-extensions.reduce((n,e)=>n+Number(e.addedNights||1),0));
   add(stay.createdAt||stay.arrival,'Ingreso y hospedaje',initialNights+' noche(s) · '+money(stay.roomRate)+' por noche',initialLodgingOf(stay),'cargo');
+  if(stay.creditApproval?.confirmed)add(stay.creditApproval.confirmedAt||stay.createdAt,
+    'Ingreso por cobrar autorizado',
+    'Doble confirmación en recepción · saldo pendiente al ingreso '+money(stay.creditApproval.amount),null,'info');
   const booking=stay.reservationId?reservationOf(stay.reservationId):null;
   if(Number(stay.advance)>0)add(booking?.createdAt||stay.createdAt,'Anticipo de reserva','Abono acreditado en esta estadía',stay.advance,'abono');
   extensions.forEach(e=>add(e.createdAt,'Noche adicional',datePretty(e.oldDeparture)+' → '+datePretty(e.newDeparture)+' · tarifa '+money(e.rate),e.amount,'cargo'));
@@ -1138,6 +1141,18 @@
   if(f.invoice==='si'&&(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim())){
     toast('Complete los cuatro datos de facturación.','error');return;
   }
+  if(plan.method==='por_cobrar'){
+    const unpaid=asMoney(plan.grandTotal-plan.deposit);
+    if(unpaid>0){
+      const rooms=plan.items.map(item=>'Hab. '+item.room.number).join(', ');
+      const message='SEGUNDA CONFIRMACIÓN — INGRESO POR COBRAR\n\n'+
+        'Huésped: '+g.firstName+' '+g.lastName+'\n'+
+        'Habitación(es): '+rooms+'\n'+
+        'Saldo pendiente: '+money(unpaid)+'\n\n'+
+        '¿Confirma por segunda vez que autoriza el ingreso SIN recibir el pago? Esta excepción quedará registrada en el historial.';
+      if(!window.confirm(message))return;
+    }
+  }
   if(plan.items.length>1){
     const msg=`¿Registrar ${plan.items.length} habitaciones al mismo cliente (${g.firstName} ${g.lastName})? Hospedaje: ${money(plan.total)} · Varios: ${money(plan.variosTotal)} · Total: ${money(plan.grandTotal)}. Cada habitación tendrá su saldo y su propia salida.`;
     if(!window.confirm(msg))return;
@@ -1151,6 +1166,11 @@
       roomRate:item.nightly,roomTotal:item.total,advance:item.advance,payments:[],
       standardRoomRate:item.normalNightly,discountTotal:item.saved,
       tariffMode:plan.discounted?'descuento_sin_factura':'normal',
+      creditApproval:plan.method==='por_cobrar'&&item.fullTotal>item.advance?{
+        confirmed:true,confirmedAt:checkinAt,shift:f.shift==='noche'?'noche':'dia',
+        amount:asMoney(item.fullTotal-item.advance),mode:'doble_confirmacion'
+      }:null,
+      paymentVerifiedAt:item.payment>0?checkinAt:null,
       invoiceRequested:f.invoice==='si',
       invoiceDetails:f.invoice==='si'?{name:f.invoiceName.trim(),identification:f.invoiceId.trim(),
         address:f.invoiceAddress.trim(),email:f.invoiceEmail.trim()}:null,
