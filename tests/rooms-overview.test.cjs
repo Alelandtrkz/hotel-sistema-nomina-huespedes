@@ -9,9 +9,11 @@ const items={
  'app-view':{innerHTML:''},breadcrumb:{textContent:''},year:{textContent:''},
  'current-date':{textContent:''},sidebar:{classList:{remove(){}}}
 };
+const listeners={};
 const doc={
  getElementById(id){return items[id]||null;},querySelectorAll(){return [];},querySelector(){return null;},
- addEventListener(){},createElement(){return {textContent:'',className:'',remove(){}};}
+ addEventListener(event,handler){listeners[event]=handler;},
+ createElement(){return {textContent:'',className:'',remove(){}};}
 };
 const storage={};
 const sandbox={window:{scrollTo(){},confirm(){return true}},document:doc,
@@ -113,6 +115,72 @@ test('Un cuarto ocupado puede tener también una reserva futura, sin cambiar el 
  assert.equal(counts.occupied,2);
  assert.equal(counts.reserved,3);
  assert.equal(db.rooms.find(r=>r.id==='room-01').status,'ocupada');
+});
+test('Las cuatro tarjetas son botones y cada una apunta al filtro correcto',()=>{
+ setup();
+ const html=t.renderRoomsOverview();
+ for(const [filter,label] of [['ocupada','Ocupadas'],['disponible','Limpias'],['por-cobrar','X/C'],['reservadas','Reservadas']]){
+   const pos=html.indexOf('data-action="filter-room-summary" data-id="'+filter+'"');
+   assert(pos>0,'Falta botón para '+label);
+   assert(html.slice(pos,pos+250).includes('aria-pressed="false"'),'Debe indicar el estado sin seleccionar');
+ }
+ assert.equal((html.match(/data-action="filter-room-summary"/g)||[]).length,4);
+});
+test('El selector de estado también permite Reservadas y conserva el selector de tipos',()=>{
+ setup();
+ const html=t.renderRooms();
+ const status=html.slice(html.indexOf('id="filter-room-status"'),html.indexOf('id="filter-room-type"'));
+ assert(status.includes('Reservadas'));
+ assert(html.includes('Todos los estados'));
+ assert(html.includes('Todos los tipos'));
+});
+test('Al pulsar cada tarjeta cambia el mapa de habitaciones y queda marcada visualmente',()=>{
+ setup();
+ assert.equal(typeof listeners.click,'function','Debe existir un manejador de clic');
+ let scrolls=0;
+ items['room-map']={scrollIntoView(){scrolls++;}};
+ const press=filter=>{
+   listeners.click({target:{closest(selector){
+     return selector==='[data-action]'?{dataset:{action:'filter-room-summary',id:filter}}:null;
+   }}});
+ };
+ for(const [filter,expected] of [
+   ['ocupada',2],['disponible',t.roomOverviewCounts().clean],
+   ['por-cobrar',1],['reservadas',2]
+ ]){
+   press(filter);
+   assert.equal(t.getUI().roomFilter,filter);
+   const view=t.renderRooms();
+   const count=(view.match(/class="room-tile /g)||[]).length;
+   assert.equal(count,expected,'Número de habitaciones incorrecto al seleccionar '+filter);
+   assert(view.includes('data-action="filter-room-summary" data-id="'+filter+'" aria-pressed="true"'));
+ }
+ assert.equal(scrolls,4);
+ press('reservadas'); // La segunda pulsación desactiva el filtro.
+ assert.equal(t.getUI().roomFilter,'todos');
+ assert(t.renderRooms().includes('Todos los estados'));
+});
+test('Reservadas muestra los cuartos asignados a reservas futuras, no crea otro estado físico',()=>{
+ const db=setup();
+ t.setUI({...t.getUI(),roomFilter:'reservadas'});
+ let html=t.renderRooms();
+ assert(html.includes('data-id="room-04"'));
+ assert(html.includes('data-id="room-07"'));
+ assert(!html.includes('data-id="room-08"'));
+ assert(!html.includes('data-id="room-05"'));
+ assert.equal(db.rooms.find(r=>r.id==='room-04').status,'disponible');
+ db.reservations.push({id:'booking-future-occupied',roomId:'room-01',status:'confirmada',
+   arrival:dateOffset(2),departure:dateOffset(3)});
+ html=t.renderRooms();
+ assert.equal((html.match(/class="room-tile /g)||[]).length,3);
+});
+test('El filtro de tipo se respeta al pulsar una tarjeta y el mapa sigue permitiendo abrir cuartos',()=>{
+ setup();
+ t.setUI({...t.getUI(),roomTypeFilter:'flex_aire',roomFilter:'ocupada'});
+ const html=t.renderRooms();
+ assert(html.includes('class="metrics rooms-overview"'));
+ assert(html.includes('Todos los tipos'));
+ assert.equal((html.match(/class="room-tile /g)||[]).length,2); // Las habitaciones 01 y 02 son flex_aire.
 });
 if(failed)process.exitCode=1;
 console.log('Solo escenarios ficticios. No se modifica Supabase ni se registran datos reales.');
