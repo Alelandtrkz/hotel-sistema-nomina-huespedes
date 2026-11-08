@@ -310,7 +310,7 @@
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula o RUC personal','document',g.document,{required:true,placeholder:'10 dígitos o 13 terminados en 001',maxlength:13})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por cédula o RUC de persona natural</label><input id="lookup-${scope}" inputmode="numeric" maxlength="13" placeholder="10 dígitos o 13 terminados en 001" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
+  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
@@ -552,6 +552,53 @@
       <div class="account-dialog-body">${history}</div>
     </div></div>`;
 }
+  function roomDateValid(value){
+  return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&addIsoDays(value,0)===value&&value>=today();
+}
+  function roomPlanningDate(){
+  return ui.roomDateMode&&roomDateValid(ui.roomDate)?ui.roomDate:today();
+}
+  function roomPlanForDate(room,date=roomPlanningDate()){
+  const valid=roomDateValid(date)?date:today();
+  const booking=db.reservations.find(b=>b.roomId===room.id&&['pendiente','confirmada'].includes(b.status)&&b.arrival<=valid&&b.departure>valid)||null;
+  const stay=activeStays().find(s=>s.roomId===room.id&&s.arrival<=valid&&s.departure>valid)||null;
+  const arriving=db.reservations.filter(b=>b.roomId===room.id&&['pendiente','confirmada'].includes(b.status)&&b.arrival===valid);
+  const leaving=db.stays.filter(s=>s.roomId===room.id&&s.status==='activa'&&s.departure===valid);
+  let status='libre',label='Libre previsto',note='Sujeto a salidas y limpieza';
+  if(room.status==='arrendada'){status='arrendada';label='Arrendada';note='Fuera de operación';}
+  else if(stay){status='ocupada';label='Ocupada prevista';note='Hasta '+datePretty(stay.departure);}
+  else if(booking){status='reservadas';label='Reservada';note='Llega '+datePretty(booking.arrival)+' · Sale '+datePretty(booking.departure);}
+  else if(valid===today()&&room.status==='ocupada'){status='ocupada';label='Ocupada (estado actual)';note='Salida por confirmar';}
+  else if(room.status==='limpieza'){status='limpieza';label='Pendiente de limpieza';note='Limpieza no confirmada';}
+  return {status,label,note,room,stay,booking,arriving,leaving,day:valid};
+}
+  function roomPlansForDate(date=roomPlanningDate()){
+  return db.rooms.map(room=>roomPlanForDate(room,date));
+}
+  function roomPrintData(date=roomPlanningDate()){
+  const projected=Boolean(ui.roomDateMode);
+  const plans=roomPlansForDate(date);
+  const summary={occupied:0,reserved:0,free:0,cleaning:0,rented:0};
+  const rows=plans.map(p=>{
+    const physical=p.room.status;
+    const state=projected?p.status:(physical==='disponible'?'libre':physical);
+    if(state==='ocupada')summary.occupied++;
+    else if(state==='reservadas')summary.reserved++;
+    else if(state==='libre')summary.free++;
+    else if(state==='limpieza')summary.cleaning++;
+    else if(state==='arrendada')summary.rented++;
+    const currentLabels={disponible:'Disponible / limpia',ocupada:'Ocupada',limpieza:'Pendiente de limpieza',arrendada:'Arrendada'};
+    return {
+      number:String(p.room.number),type:LABELS[p.room.type]||p.room.type,
+      status:projected?p.label:(currentLabels[physical]||'Sin estado'),
+      arrival:p.booking?.arrival||p.stay?.arrival||p.arriving[0]?.arrival||'',
+      departure:p.booking?.departure||p.stay?.departure||p.leaving[0]?.departure||'',
+      note:projected?p.note:(p.booking?'Reserva registrada · Llega '+datePretty(p.booking.arrival):'Estado físico de recepción'),
+      isArrival:p.arriving.length>0,isDeparture:p.leaving.length>0
+    };
+  });
+  return {date,summary,rows,projected};
+}
   function reservedRoomIds(){
     const valid=new Set(db.rooms.filter(r=>r.status!=='arrendada').map(r=>r.id));
     return new Set(db.reservations.filter(b=>
@@ -559,54 +606,200 @@
     ).map(b=>b.roomId));
   }
   function roomOverviewCounts(){
-  const rooms=db.rooms,active=activeStays(),openStaysByRoom=new Map(active.map(s=>[s.roomId,s]));
+  if(ui.roomDateMode){
+    const plans=roomPlansForDate();
+    const duePlans=plans.filter(p=>p.status==='ocupada'&&p.stay&&dueOf(p.stay)>0);
+    return {occupied:plans.filter(p=>p.status==='ocupada').length,
+      clean:plans.filter(p=>p.status==='libre').length,
+      owing:duePlans.length,reserved:plans.filter(p=>p.status==='reservadas').length,
+      receivable:asMoney(duePlans.reduce((n,p)=>n+dueOf(p.stay),0))};
+  }
+  const rooms=db.rooms,active=activeStays(),openStaysByRoom=new Map(active.map(st=>[st.roomId,st]));
   const occupied=rooms.filter(r=>r.status==='ocupada').length;
   const clean=rooms.filter(r=>r.status==='disponible').length;
-  const owingStays=rooms.filter(r=>r.status==='ocupada').map(r=>openStaysByRoom.get(r.id)).filter(s=>s&&dueOf(s)>0);
+  const owingStays=rooms.filter(r=>r.status==='ocupada').map(r=>openStaysByRoom.get(r.id)).filter(st=>st&&dueOf(st)>0);
   const owing=owingStays.length;
-  const receivable=asMoney(owingStays.reduce((n,s)=>n+dueOf(s),0));
+  const receivable=asMoney(owingStays.reduce((n,st)=>n+dueOf(st),0));
   const reserved=reservedRoomIds().size;
   return {occupied,clean,owing,reserved,receivable};
 }
   function renderRoomsOverview(){
-    const c=roomOverviewCounts();
-    const card=(filter,title,number,subtitle,symbol,kind,label)=>{
-      const selected=ui.roomFilter===filter;
-      return `<button type="button" class="metric rooms-kpi rooms-kpi-${kind}${selected?' is-active':''}"
-        data-action="filter-room-summary" data-id="${filter}" aria-pressed="${selected}"
-        aria-label="${esc(label)}" title="${esc(label)}">
-        <div class="metric-top"><span class="metric-title">${title}</span><span class="metric-icon" aria-hidden="true">${symbol}</span></div>
-        <div class="metric-value">${number}</div>
-        <div class="metric-sub">${subtitle}</div>
-      </button>`;
-    };
-    return `<div class="metrics rooms-overview" role="group" aria-label="Filtrar mapa por indicadores de habitaciones">
-      ${card('ocupada','Ocupadas',c.occupied,'Con huéspedes alojados','⌂','occupied','Filtrar el mapa por habitaciones ocupadas')}
-      ${card('disponible','Limpias',c.clean,'Disponibles para ingresar','✓','clean','Filtrar el mapa por habitaciones limpias y disponibles')}
-      ${card('por-cobrar','X/C',c.owing,'Ocupadas por cobrar · '+money(c.receivable),'$','owing','Filtrar el mapa por habitaciones ocupadas con saldo por cobrar')}
-      ${card('reservadas','Reservadas',c.reserved,'Habitaciones apartadas desde hoy','▤','reserved','Filtrar el mapa por habitaciones con reservas activas o futuras')}
-    </div>`;
-  }
+  const c=roomOverviewCounts(),future=Boolean(ui.roomDateMode);
+  const card=(filter,title,number,subtitle,symbol,kind,label)=>{
+    const selected=ui.roomFilter===filter;
+    return `<button type="button" class="metric rooms-kpi rooms-kpi-${kind}${selected?' is-active':''}"
+      data-action="filter-room-summary" data-id="${filter}" aria-pressed="${selected}"
+      aria-label="${esc(label)}" title="${esc(label)}">
+      <div class="metric-top"><span class="metric-title">${title}</span><span class="metric-icon" aria-hidden="true">${symbol}</span></div>
+      <div class="metric-value">${number}</div>
+      <div class="metric-sub">${subtitle}</div>
+    </button>`;
+  };
+  return `<div class="metrics rooms-overview" role="group" aria-label="Filtrar mapa por indicadores de habitaciones">
+    ${card('ocupada','Ocupadas',c.occupied,future?'Con alojamiento previsto':'Con huéspedes alojados','⌂','occupied','Filtrar habitaciones ocupadas')}
+    ${card('disponible',future?'Libres previstas':'Limpias',c.clean,future?'Sin ocupación registrada · limpieza por confirmar':'Disponibles para ingresar','✓','clean','Filtrar habitaciones disponibles')}
+    ${card('por-cobrar','X/C',c.owing,'Ocupadas por cobrar · '+money(c.receivable),'$','owing','Filtrar habitaciones ocupadas con saldo por cobrar')}
+    ${card('reservadas','Reservadas',c.reserved,future?'Con reserva en la fecha':'Habitaciones apartadas desde hoy','▤','reserved','Filtrar habitaciones reservadas')}
+  </div>`;
+}
+  function roomForecastTile(plan){
+  const r=plan.room,owed=plan.stay?dueOf(plan.stay):0;
+  const css=plan.status==='libre'?'disponible':plan.status==='reservadas'?'reserved-planned':plan.status;
+  const tag=plan.status==='libre'?'Libre previsto':plan.label;
+  const detail=plan.booking?`Reserva: ${datePretty(plan.booking.arrival)} – ${datePretty(plan.booking.departure)}`:plan.stay?`Estadía: ${datePretty(plan.stay.arrival)} – ${datePretty(plan.stay.departure)}`:plan.note;
+  const flags=[plan.arriving.length?'Llegada de reserva':null,plan.leaving.length?'Salida prevista':null].filter(Boolean);
+  return `<button type="button" class="room-tile ${esc(css)} room-forecast" data-action="select-room" data-id="${esc(r.id)}" title="Consultar habitación ${esc(r.number)} para ${esc(datePretty(plan.day))}">
+    <div class="room-topline"><span class="room-no">${esc(r.number)}</span>${plan.stay&&owed>0?`<span class="room-due-amount unpaid">Por cobrar<br><strong>${money(owed)}</strong></span>`:''}</div>
+    <div class="room-type">${esc(LABELS[r.type]||r.type)}</div>
+    <div class="room-forecast-range">${esc(detail)}</div>
+    <div class="room-badges"><span class="room-badge ${esc(css)}">${esc(tag)}</span></div>
+    ${flags.length?`<div class="room-forecast-flags">${flags.map(x=>`<small>${esc(x)}</small>`).join('')}</div>`:''}
+  </button>`;
+}
+  function renderRoomDatePicker(){
+  if(!ui.roomDateMode)return '';
+  const date=roomPlanningDate(),rows=roomPlansForDate(date);
+  const summary={occupied:rows.filter(x=>x.status==='ocupada').length,
+    reserved:rows.filter(x=>x.status==='reservadas').length,
+    free:rows.filter(x=>x.status==='libre').length};
+  return `<div class="room-date-panel" id="room-date-panel">
+    <div class="room-date-choice">
+      <label for="room-plan-date">Consultar ocupación para</label>
+      <input id="room-plan-date" type="date" min="${today()}" value="${esc(date)}" aria-label="Fecha de ocupación prevista">
+      ${btn('Hoy','room-plan-today','btn-secondary btn-sm',`type="button"`)}
+      ${btn('Mañana','room-plan-tomorrow','btn-secondary btn-sm',`type="button"`)}
+      ${btn('Estado actual','toggle-room-dates','btn-secondary btn-sm',`type="button"`)}
+    </div>
+    <div class="room-date-note"><strong>${esc(datePretty(date))}</strong> · ${summary.occupied} ocupadas previstas · ${summary.reserved} reservadas · ${summary.free} libres previstas.
+      La disponibilidad futura depende de las salidas y limpiezas pendientes; no se garantiza que una habitación esté físicamente lista.
+      Las fechas de salida liberan la noche siguiente y las reservas sin habitación asignada no aparecen en el mapa.
+    </div>
+  </div>`;
+}
+  function renderRoomPlanDetail(room,plan){
+  if(!plan)return '';
+  return `<section class="panel room-date-detail" aria-label="Planificación de habitación seleccionada">
+    <div class="panel-head"><div><h2>Planificación · habitación ${esc(room.number)}</h2>
+      <p>${esc(datePretty(plan.day))} — ${esc(plan.label)}</p></div></div>
+    <div class="room-date-detail-body">
+      <div><strong>Información prevista:</strong> ${esc(plan.note)}</div>
+      ${plan.booking?`<div><strong>Reserva:</strong> entrada ${datePretty(plan.booking.arrival)} · salida ${datePretty(plan.booking.departure)}</div>`:''}
+      ${plan.arriving.length?`<div><strong>Llegada programada:</strong> ${plan.arriving.length} reserva(s) para esta fecha</div>`:''}
+      ${plan.leaving.length?`<div><strong>Salidas programadas:</strong> ${plan.leaving.length} estadía(s) finalizan este día</div>`:''}
+      <small>La ficha de cuenta que aparece debajo corresponde al estado actual, no a un cobro futuro.</small>
+    </div>
+  </section>`;
+}
+  function roomHousekeepingPrintHtml(report){
+  const generated=new Intl.DateTimeFormat('es-EC',{dateStyle:'short',timeStyle:'short'}).format(new Date());
+  const fmt=d=>d?datePretty(d):'—';
+  const rows=report.rows.map(x=>`<tr>
+    <td class="num">${esc(x.number)}</td><td>${esc(x.type)}</td>
+    <td class="status">${esc(x.status)}</td>
+    <td>${esc(fmt(x.arrival))}${x.isArrival?' · Llega':''}</td>
+    <td>${esc(fmt(x.departure))}${x.isDeparture?' · Sale':''}</td>
+    <td class="check"></td><td class="note"></td>
+  </tr>`).join('');
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+    <title>Hotel Unicornio · Camarería · ${esc(report.date)}</title>
+    <style>
+    @page{size:A4 landscape;margin:13mm 12mm}
+    *{box-sizing:border-box}body{margin:0;color:#192d24;font:11px Arial,sans-serif}
+    h1{font:700 21px Georgia,serif;margin:0 0 4px}h2{font:700 13px Arial,sans-serif;margin:0 0 12px}
+    .header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:2px solid #2b5b43;padding-bottom:11px;margin-bottom:10px}
+    .meta{font-size:10px;color:#526459;text-align:right;line-height:1.7}
+    .summary{display:flex;gap:16px;flex-wrap:wrap;border:1px solid #d8e5d9;background:#f5f8f4;padding:8px 10px;margin:8px 0 12px}
+    .summary strong{font-size:13px}.summary span{font-size:10px}
+    .notelead{font-size:9px;color:#626b61;margin:10px 0}
+    table{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}
+    thead{display:table-header-group}tr{break-inside:avoid}
+    th,td{border:1px solid #aab5aa;padding:6px 5px;text-align:left;vertical-align:middle;min-height:23px;overflow-wrap:anywhere}
+    th{background:#e9f0ea;font-size:9px;text-transform:uppercase}
+    td.num{font-size:13px;font-weight:800;text-align:center}
+    td.status{font-weight:700}td.check{text-align:center}
+    tr:nth-child(even) td{background:#fafcf9}
+    .footer{margin-top:12px;display:flex;gap:26px;justify-content:space-between;font-size:10px;align-items:end}
+    .signature{border-bottom:1px solid #8c9a8e;min-width:170px;height:28px}
+    .no-print{margin-bottom:12px;font:12px Arial,sans-serif}
+    .no-print button{background:#285f49;color:white;padding:8px 14px;border:0;border-radius:5px;cursor:pointer}
+    @media print{.no-print{display:none}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+    <div class="no-print"><button type="button" onclick="window.print()">Imprimir reporte</button></div>
+    <header class="header"><div><h1>Hotel Unicornio</h1><h2>REPORTE DE CAMARERÍA — ${esc(datePretty(report.date))}</h2></div>
+      <div class="meta">Fecha de consulta: ${esc(report.date)}<br>Generado: ${esc(generated)}<br>Puerto Francisco de Orellana, Ecuador</div></header>
+    <div class="summary"><span><strong>${report.summary.occupied}</strong> ocupadas</span>
+      <span><strong>${report.summary.reserved}</strong> reservadas</span>
+      <span><strong>${report.summary.free}</strong> ${report.projected?'libres previstas':'disponibles / limpias'}</span>
+      <span><strong>${report.summary.cleaning}</strong> por limpiar</span>
+      <span><strong>${report.summary.rented}</strong> arrendadas</span>
+      <span><strong>${report.rows.length}</strong> habitaciones</span></div>
+    <table><thead><tr><th style="width:6%">Habitación</th><th style="width:18%">Tipo</th>
+      <th style="width:17%">Estado</th><th style="width:13%">Llegada</th>
+      <th style="width:13%">Salida</th><th style="width:11%">Limpieza ✓</th>
+      <th style="width:22%">Observaciones / novedades</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    <div class="notelead">Reporte operativo. ${report.projected?'Las fechas planificadas son previsiones basadas en ingresos y reservas registrados.':'Los estados corresponden al mapa físico actual; reservas y salidas son informativas.'} Una salida prevista no confirma que se haya realizado limpieza. No contiene datos personales de huéspedes.</div>
+    <footer class="footer"><div>Elaboró / Recepción<div class="signature"></div></div>
+      <div>Verificó / Camarería<div class="signature"></div></div>
+      <div>Observaciones generales<div class="signature" style="min-width:270px"></div></div></footer>
+    </body></html>`;
+}
+  function printHousekeepingReport(){
+  const date=roomPlanningDate();
+  const html=roomHousekeepingPrintHtml(roomPrintData(date));
+  const page=window.open('','_blank','width=1100,height=780');
+  if(!page){toast('El navegador bloqueó la ventana de impresión. Autorice ventanas emergentes para imprimir el reporte de camarería.','error');return;}
+  page.opener=null;
+  page.document.open();
+  page.document.write(html);
+  page.document.close();
+  page.focus();
+  page.print();
+}
   function renderRooms(){
-    const reservedIds=reservedRoomIds();
-    const debtIds=new Set(activeStays().filter(st=>dueOf(st)>0).map(st=>st.roomId));
-    const filtered=db.rooms.filter(r=>{
-      if(ui.roomTypeFilter!=='todos'&&r.type!==ui.roomTypeFilter)return false;
-      if(ui.roomFilter==='todos')return true;
-      if(ui.roomFilter==='reservadas')return reservedIds.has(r.id);
-      if(ui.roomFilter==='por-cobrar')return r.status==='ocupada'&&debtIds.has(r.id);
-      return r.status===ui.roomFilter;
-    });
-    const selected=roomOf(ui.selectedRoomId);
-    const stay=selected?activeStays().find(st=>st.roomId===selected.id):null;
-    const unpaid=activeStays().filter(st=>dueOf(st)>0),totalReceivable=asMoney(unpaid.reduce((n,st)=>n+dueOf(st),0));
-    return head('Control operativo','Habitaciones','Toque una habitación para abrir su cuenta, revisar cargos y registrar pagos.',btn('Nuevo ingreso','go-ingreso'))+
-      renderRoomsOverview()+
-      `<section class="panel" id="room-map"><div class="panel-head"><div><h2>Mapa de habitaciones</h2><p>${db.rooms.length} habitaciones · ${unpaid.length} con saldo por cobrar · total pendiente ${money(totalReceivable)}</p></div>${roomsLegend()}</div>
-      <div class="filters"><select id="filter-room-status" aria-label="Filtrar por estado">${selectOptions([['todos','Todos los estados'],['disponible','Disponibles'],['ocupada','Ocupadas'],['por-cobrar','Ocupadas por cobrar'],['reservadas','Reservadas'],['limpieza','Pendientes de limpieza'],['arrendada','Arrendadas']],ui.roomFilter)}</select><select id="filter-room-type" aria-label="Filtrar por tipo">${selectOptions([['todos','Todos los tipos'],...ROOM_TYPES.map(x=>[x,LABELS[x]])],ui.roomTypeFilter)}</select></div>
-      <div class="room-grid">${filtered.length?filtered.map(roomTile).join(''):noRows('No hay habitaciones que coincidan con el filtro.')}</div></section>
-      ${selected?renderRoomAccount(selected,stay):''}`;
-  }
+  const dateMode=Boolean(ui.roomDateMode),date=roomPlanningDate();
+  const plans=dateMode?roomPlansForDate(date):[];
+  const byId=dateMode?new Map(plans.map(x=>[x.room.id,x])):new Map();
+  const reservedIds=dateMode?new Set(plans.filter(x=>x.status==='reservadas').map(x=>x.room.id)):reservedRoomIds();
+  const debtIds=new Set(activeStays().filter(st=>dueOf(st)>0).map(st=>st.roomId));
+  const filtered=db.rooms.filter(r=>{
+    if(ui.roomTypeFilter!=='todos'&&r.type!==ui.roomTypeFilter)return false;
+    if(ui.roomFilter==='todos')return true;
+    if(dateMode){
+      const p=byId.get(r.id);
+      if(ui.roomFilter==='reservadas')return p.status==='reservadas';
+      if(ui.roomFilter==='por-cobrar')return p.status==='ocupada'&&p.stay&&dueOf(p.stay)>0;
+      if(ui.roomFilter==='disponible')return p.status==='libre';
+      return p.status===ui.roomFilter;
+    }
+    if(ui.roomFilter==='reservadas')return reservedIds.has(r.id);
+    if(ui.roomFilter==='por-cobrar')return r.status==='ocupada'&&debtIds.has(r.id);
+    return r.status===ui.roomFilter;
+  });
+  const selected=roomOf(ui.selectedRoomId);
+  const stay=selected?activeStays().find(st=>st.roomId===selected.id):null;
+  const unpaid=activeStays().filter(st=>dueOf(st)>0),totalReceivable=asMoney(unpaid.reduce((n,st)=>n+dueOf(st),0));
+  const filteredTitle=dateMode?`Vista prevista para ${datePretty(date)}`:`${db.rooms.length} habitaciones · ${unpaid.length} con saldo por cobrar · total pendiente ${money(totalReceivable)}`;
+  return head('Control operativo','Habitaciones','Toque una habitación para abrir su cuenta, revisar cargos y registrar pagos.',btn('Nuevo ingreso','go-ingreso'))+
+    renderRoomsOverview()+
+    `<section class="panel" id="room-map">
+      <div class="panel-head"><div><h2>Mapa de habitaciones</h2><p>${filteredTitle}</p></div>${roomsLegend()}</div>
+      <div class="filters room-filters-bar">
+        <div class="room-filter-selects">
+          <select id="filter-room-status" aria-label="Filtrar por estado">${selectOptions([['todos','Todos los estados'],['disponible',dateMode?'Libres previstas':'Disponibles'],['ocupada','Ocupadas'],['por-cobrar','Ocupadas por cobrar'],['reservadas','Reservadas'],['limpieza','Pendientes de limpieza'],['arrendada','Arrendadas']],ui.roomFilter)}</select>
+          <select id="filter-room-type" aria-label="Filtrar por tipo">${selectOptions([['todos','Todos los tipos'],...ROOM_TYPES.map(x=>[x,LABELS[x]])],ui.roomTypeFilter)}</select>
+        </div>
+        <div class="room-filter-actions">
+          ${btn((dateMode?'Cerrar fechas':'Ver por fecha'),'toggle-room-dates',dateMode?'btn-light':'btn-secondary',`type="button" aria-expanded="${dateMode}"`)}
+          ${btn('Imprimir reporte camarería','print-housekeeping','btn-secondary',`type="button"`)}
+        </div>
+      </div>
+      ${renderRoomDatePicker()}
+      <div class="room-grid">${filtered.length?filtered.map(r=>dateMode?roomForecastTile(byId.get(r.id)):roomTile(r)).join(''):noRows('No hay habitaciones que coincidan con el filtro y la fecha.')}</div>
+    </section>
+    ${selected&&dateMode?renderRoomPlanDetail(selected,byId.get(selected.id)):''}
+    ${selected?renderRoomAccount(selected,stay):''}`;
+}
   function availableForCheckin(r,arrival,departure,excludeReservationId){
     if(r.status!=='disponible'||activeStays().some(s=>s.roomId===r.id))return false;
     return !db.reservations.some(b=>b.id!==excludeReservationId&&b.roomId===r.id&&['pendiente','confirmada'].includes(b.status)&&overlap(arrival,departure,b.arrival,b.departure));
@@ -1520,6 +1713,19 @@
       case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinVariosOpen=false;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
+      case 'toggle-room-dates':{
+        ui.roomDateMode=!ui.roomDateMode;
+        ui.roomDate=ui.roomDateMode?(roomDateValid(ui.roomDate)?ui.roomDate:today()):null;
+        ui.roomFilter='todos';ui.selectedRoomId=null;render();
+        break;
+      }
+      case 'room-plan-today':{
+        ui.roomDateMode=true;ui.roomDate=today();ui.selectedRoomId=null;render();break;
+      }
+      case 'room-plan-tomorrow':{
+        ui.roomDateMode=true;ui.roomDate=tomorrow();ui.selectedRoomId=null;render();break;
+      }
+      case 'print-housekeeping':printHousekeepingReport();break;
       case 'filter-room-summary':{
         if(!['ocupada','disponible','por-cobrar','reservadas'].includes(id))break;
         ui.roomFilter=ui.roomFilter===id?'todos':id;
@@ -1671,6 +1877,13 @@
     if(el.id==='filter-product-category'){ui.productCategory=el.value;render();return;}
     if(el.id==='filter-stock-category'){ui.stockCategory=el.value;render();return;}
     if(el.id==='cash-date'||el.id==='cash-shift'){ui.cashDraft=readForm('cash-close-form');if(el.id==='cash-date')ui.cashDate=el.value;else ui.cashShift=el.value;render();return;}
+    if(el.id==='room-plan-date'){
+      if(!roomDateValid(el.value)){
+        toast('Seleccione una fecha válida de hoy en adelante para consultar las habitaciones.','error');
+        el.value=roomPlanningDate();return;
+      }
+      ui.roomDateMode=true;ui.roomDate=el.value;ui.selectedRoomId=null;render();return;
+    }
     if(el.id==='filter-room-status'){ui.roomFilter=el.value;render();return;}
     if(el.id==='filter-room-type'){ui.roomTypeFilter=el.value;render();return;}
     if(el.closest('#checkin-form')){

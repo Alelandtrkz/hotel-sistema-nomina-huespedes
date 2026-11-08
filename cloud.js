@@ -246,7 +246,7 @@
       }
       if(!uiLoaded) {
         uiLoaded=true;
-        var script=document.createElement("script");script.src="./app.js?v=0.14-filtros-tarjetas";
+        var script=document.createElement("script");script.src="./app.js?v=0.15-fechas-camareria";
         script.onerror=function(){status("No se pudo cargar la aplicación",true);};
         document.body.appendChild(script);
       }

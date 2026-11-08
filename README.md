@@ -1,3 +1,27 @@
+# Hotel Unicornio v0.15 — Consulta de ocupación por fecha y reporte de camarería
+
+En **Habitaciones**, la barra que contiene los filtros **Todos los estados** y **Todos los tipos** ahora incluye, alineados a la derecha en computadora y en la misma sección, dos botones: **Ver por fecha** y **Imprimir reporte camarería**. En pantallas pequeñas ambos botones quedan juntos en una fila horizontal debajo de los filtros.
+
+## Ver por fecha
+
+- Pulse **Ver por fecha** para desplegar el calendario y botones rápidos **Hoy**, **Mañana** y **Estado actual**. Seleccione una fecha desde hoy en adelante.
+- El mapa y los cuatro contadores se recalculan para la fecha consultada. Una estadía activa ocupa las noches desde la entrada **inclusive** hasta la salida **exclusiva**. Una reserva pendiente o confirmada se muestra cuando la fecha está entre su llegada y su salida, con sus fechas visibles en cada tarjeta. Así se puede anticipar cuáles estarán ocupadas, reservadas o libres.
+- **Libres previstas** significa sin estancia ni reserva asignada para esa fecha; **no certifica limpieza ni disponibilidad de última hora**. Las habitaciones arrendadas siguen fuera de operación. Las marcadas como pendientes de limpieza **se mantienen pendientes hasta que recepción confirme la limpieza**.
+- Los filtros de estado y tipo, los indicadores interactivos, la leyenda y el mapa original se conservan. «Estado actual» vuelve a la vista operativa sin alterar los datos.
+- Al pulsar una habitación de una fecha planificada, se muestra un resumen de su reserva/estadía prevista. Las cuentas que pueden aparecer debajo se refieren al estado **actual** de la habitación.
+- Las reservas sin habitación asignada no aparecen en el mapa. Las salidas y limpiezas futuras están sujetas a cambios. La aplicación no asigna habitaciones ni confirma reservas automáticamente al consultar.
+
+## Imprimir reporte de camarería
+
+- El botón imprime **todas las habitaciones**, independientemente de qué filtro esté seleccionado.
+- Sin el calendario abierto, utiliza los **estados físicos actuales**; con el calendario abierto, utiliza la **previsión de la fecha seleccionada**.
+- Incluye número y tipo de habitación, estado, fecha de llegada y salida, una columna para marcar limpieza, espacio para novedades, resumen de ocupación y firmas de recepción y camarería.
+- Es un reporte operativo **sin nombres, cédulas, teléfonos, precios ni saldos de los huéspedes**. Se abre en una ventana de impresión con formato A4 horizontal. Si el navegador bloquea ventanas emergentes, hay que permitirlas para el sitio.
+
+**Pruebas:** `tests/room-date-housekeeping.test.cjs` verifica fechas válidas, llegada/salida, reservas futuras, filtros, indicadores, el reporte imprimible y ausencia de datos privados. No se necesitan migraciones ni cambios de RLS. La consulta no modifica datos de Supabase.
+
+---
+
 # Hotel Unicornio v0.14 — Indicadores de Habitaciones interactivos
 
 Las cuatro tarjetas del resumen de Habitaciones ahora son **botones de filtro** vinculados al mapa y totalmente utilizables con ratón, teclado y pantalla táctil:
