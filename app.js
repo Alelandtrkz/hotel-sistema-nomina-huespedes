@@ -315,6 +315,7 @@
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
+    closeRoomBarcodeScanner();
     if(!db.rooms.every(r=>['disponible','ocupada','limpieza','arrendada'].includes(r.status)))db.rooms.forEach(r=>{if(!['disponible','ocupada','limpieza','arrendada'].includes(r.status))r.status=r.type==='arrendada'?'arrendada':'disponible';});
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===ui.view));
     document.getElementById('breadcrumb').textContent=VIEWS[ui.view];
@@ -374,6 +375,120 @@
     field.focus?.();
     return true;
   }
+
+  // Escáner iniciado solo a petición del recepcionista; no envía imágenes a Supabase.
+  let roomBarcodeInstance=null,roomBarcodeToken=0,roomBarcodeLoading=null,roomBarcodeDetected=false;
+  function roomBarcodeStatus(message){
+    const el=document.getElementById('room-barcode-status');
+    if(el)el.textContent=message;
+  }
+  function stopRoomBarcodeCamera(){
+    const instance=roomBarcodeInstance;
+    roomBarcodeInstance=null;
+    if(instance){
+      try{Promise.resolve(instance.stop()).catch(()=>{}).then(()=>{try{instance.clear();}catch(_){}});}
+      catch(_){try{instance.clear();}catch(__){}}
+    }
+  }
+  function closeRoomBarcodeScanner(){
+    roomBarcodeToken++;
+    roomBarcodeDetected=false;
+    stopRoomBarcodeCamera();
+    document.getElementById('room-barcode-overlay')?.remove();
+  }
+  function openRoomBarcodeScanner(){
+    if(!document.getElementById('room-extra-form'))return;
+    closeRoomBarcodeScanner();
+    const wrapper=document.createElement('div');
+    wrapper.id='room-barcode-overlay';
+    wrapper.className='room-barcode-overlay';
+    wrapper.innerHTML=`<section class="room-barcode-dialog" role="dialog" aria-modal="true" aria-label="Escanear código de barras del producto">
+      <header class="room-barcode-header"><div><strong>Escanear producto</strong><small>Use la cámara del teléfono o escriba el código impreso.</small></div>
+        <button type="button" class="room-barcode-close" data-action="close-room-barcode-scanner" aria-label="Cerrar escáner">×</button></header>
+      <div class="room-barcode-body">
+        <div id="room-barcode-reader" class="room-barcode-reader" aria-label="Vista de la cámara"></div>
+        <div class="room-barcode-buttons">
+          <button type="button" class="btn btn-secondary" id="start-room-barcode-camera" data-action="start-room-barcode-camera">Activar cámara</button>
+          <button type="button" class="btn btn-light" data-action="stop-room-barcode-camera">Detener cámara</button>
+        </div>
+        <p id="room-barcode-status" role="status" class="mini-caption">La cámara solo se abre con su autorización y requiere HTTPS.</p>
+        <form id="room-barcode-form">
+          <label for="room-barcode-manual">Código de barras manual</label>
+          <div class="room-barcode-manual"><input type="text" id="room-barcode-manual" name="barcode" autocomplete="off" maxlength="64" placeholder="EAN, UPC o Code 128">
+          <button class="btn btn-primary" type="submit">Usar código</button></div>
+        </form>
+        <p class="mini-caption">El código debe estar asociado a un producto con precio en Tarifas y ajustes. Si no está vinculado, puede buscar el artículo por nombre.</p>
+      </div></section>`;
+    document.body.appendChild(wrapper);
+    document.getElementById('room-barcode-manual')?.focus();
+  }
+  function applyRoomBarcode(raw){
+    const code=normalizeBarcode(raw);
+    if(!barcodeValid(code)||!code){roomBarcodeStatus('Ingrese un código de barras válido.');return false;}
+    const product=productByBarcode(code);
+    if(!product){
+      roomBarcodeStatus('Código '+code+' no asociado a un producto. Asigne el código en Tarifas y ajustes o use Buscar producto.');
+      return false;
+    }
+    if(product.price===null||Number(product.price)<=0){
+      roomBarcodeStatus('El producto '+product.name+' no tiene un precio establecido. Configure su precio primero.');
+      return false;
+    }
+    if(!selectRoomExtraProduct(product.id)){roomBarcodeStatus('No fue posible elegir este producto.');return false;}
+    closeRoomBarcodeScanner();
+    toast('Producto seleccionado: '+product.name+'. Confirme la cantidad y registre el cargo.');
+    return true;
+  }
+  function loadRoomBarcodeLibrary(){
+    if(window.Html5Qrcode)return Promise.resolve();
+    if(!roomBarcodeLoading){
+      roomBarcodeLoading=new Promise((resolve,reject)=>{
+        const script=document.createElement('script');
+        script.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+        script.async=true;
+        script.onload=()=>window.Html5Qrcode?resolve():reject(new Error('No se pudo iniciar el lector.'));
+        script.onerror=()=>reject(new Error('No se descargó el lector de cámara.'));
+        document.head.appendChild(script);
+      }).catch(err=>{roomBarcodeLoading=null;throw err;});
+    }
+    return roomBarcodeLoading;
+  }
+  async function startRoomBarcodeCamera(){
+    const token=++roomBarcodeToken,button=document.getElementById('start-room-barcode-camera');
+    if(roomBarcodeInstance){roomBarcodeStatus('La cámara ya está activa.');return;}
+    roomBarcodeDetected=false;
+    if(button)button.disabled=true;
+    roomBarcodeStatus('Solicitando cámara...');
+    try{
+      if(!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
+        throw new Error('Este navegador no permite cámara aquí. Abra el sitio HTTPS desde Safari o Chrome, o ingrese el código manualmente.');
+      await loadRoomBarcodeLibrary();
+      if(token!==roomBarcodeToken||!document.getElementById('room-barcode-overlay'))return;
+      const scanner=new window.Html5Qrcode('room-barcode-reader');
+      roomBarcodeInstance=scanner;
+      await scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:120}},
+        decoded=>{
+          if(roomBarcodeDetected)return;
+          roomBarcodeDetected=true;
+          const manual=document.getElementById('room-barcode-manual');
+          if(manual)manual.value=decoded;
+          if(!applyRoomBarcode(decoded)){
+            roomBarcodeStatus('Código leído: '+String(decoded)+'. No hay producto asociado con precio. Configure el código o búsquelo por nombre.');
+            stopRoomBarcodeCamera();
+          }
+        },()=>{});
+      if(token!==roomBarcodeToken||!document.getElementById('room-barcode-overlay')){
+        stopRoomBarcodeCamera();return;
+      }
+      roomBarcodeStatus('Apunte la cámara al código del producto.');
+    }catch(err){
+      roomBarcodeStatus('No se pudo activar la cámara: '+(err?.message||'revise los permisos')+'. Puede escribir el código manualmente.');
+      stopRoomBarcodeCamera();
+    }finally{
+      if(button&&token===roomBarcodeToken)button.disabled=false;
+    }
+  }
+
   function renderRoomExtraSection(stay){
     const available=db.products.filter(p=>p.price!==null&&Number(p.price)>0).slice().sort(sortProduct);
     return `<details class="phase2-operation" id="phase2-extras"><summary><span>Agregar varios a la habitación</span><small>Busque productos o escanee su código de barras</small></summary>
@@ -1897,6 +2012,7 @@
     const nav=e.target.closest('[data-view]');if(nav){navigate(nav.dataset.view);return;}
     if(e.target.closest('#menu-toggle')){document.getElementById('sidebar').classList.toggle('open');return;}
     if(e.target.closest('#dismiss-notice')){document.querySelector('.notice')?.remove();return;}
+    if(e.target.id==='room-barcode-overlay'){closeRoomBarcodeScanner();return;}
     if(e.target.classList?.contains('reservation-guest-overlay')){closeReservationGuestSearch();return;}
     const el=e.target.closest('[data-action]');if(!el)return;
     const action=el.dataset.action,id=el.dataset.id;
@@ -1932,6 +2048,10 @@
       case 'go-varios':navigate('varios');break;
       case 'go-caja':navigate('caja');break;
       case 'export-cash':exportCash();break;
+      case 'open-room-barcode-scanner':openRoomBarcodeScanner();break;
+      case 'close-room-barcode-scanner':closeRoomBarcodeScanner();break;
+      case 'start-room-barcode-camera':startRoomBarcodeCamera();break;
+      case 'stop-room-barcode-camera':roomBarcodeToken++;stopRoomBarcodeCamera();roomBarcodeStatus('Cámara detenida. Puede ingresar el código manualmente.');break;
       case 'toggle-room-extra-search':{
         const finder=document.getElementById('room-extra-search');
         if(finder){finder.classList.toggle('hidden');if(!finder.classList.contains('hidden'))document.getElementById('room-extra-search-input')?.focus();}
@@ -2128,7 +2248,7 @@
   });
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
-    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
+    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-barcode-form':()=>applyRoomBarcode(document.getElementById('room-barcode-manual')?.value),'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
     if(handlers[id]){e.preventDefault();handlers[id]();}
   });
   document.addEventListener('reset',e=>{
@@ -2139,6 +2259,7 @@
   });
   
   document.addEventListener('keydown',e=>{
+    if(document.getElementById('room-barcode-overlay')&&e.key==='Escape'){e.preventDefault();closeRoomBarcodeScanner();return;}
     if(ui.reservationGuestSearchOpen){
       if(e.key==='Escape'){e.preventDefault();closeReservationGuestSearch();return;}
       if(e.key==='Enter'&&e.target.id==='reservation-guest-search-input'){e.preventDefault();return;}
