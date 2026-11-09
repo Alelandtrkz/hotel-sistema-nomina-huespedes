@@ -363,7 +363,7 @@
           ${field('Valor del abono (USD)','amount','',{id:'payment-amount',type:'number',min:0.01,max:due,step:'0.01',required:true,placeholder:'Ej. 5.00'})}
           ${cashChangeFields('payment',{},0)}
           <div class="field hidden section-gap" id="payment-reference"><label for="reference">Código de transferencia *</label><input id="reference" name="reference" placeholder="Referencia bancaria"></div>
-          <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Guardar abono</button>
+          <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago parcial</button>
           <p class="mini-caption section-gap">El abono reduce el saldo de esta cuenta y queda registrado en caja, pero <strong>no cierra la estadía ni libera la habitación</strong>.</p>
           ${due<=0?'<p class="mini-caption">La cuenta no tiene saldo pendiente. Puede registrar la salida en la sección de cierre.</p>':''}
         </form>
