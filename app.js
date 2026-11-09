@@ -19,7 +19,7 @@
   // existentes de Nevera/Bodega ni mueve stock entre ellos.
   const SALES_ZONES={vitrina:'Vitrina',nevera:'Nevera',nevera_helados:'Nevera helados',bodega:'Bodega'};
   const SALES_ZONE_OPTIONS=[['','Zona sugerida (sin confirmar)'],...Object.entries(SALES_ZONES)];
-  const VIEWS = {inicio:'Panel general',habitaciones:'Habitaciones',ingreso:'Registro / ingreso',reservas:'Reservas',facturas:'Facturas por emitir',salidas:'Salidas y cobros',varios:'Varios / consumos',inventario:'Inventario de varios',caja:'Cierre de caja',huespedes:'Huéspedes',configuracion:'Tarifas y ajustes'};
+  const VIEWS = {inicio:'Panel general',habitaciones:'Habitaciones',ingreso:'Registro / ingreso',reservas:'Reservas',facturas:'Facturas por emitir',salidas:'Salidas y cobros',varios:'Varios / consumos',inventario:'Inventario de varios',caja:'Cierre de caja',huespedes:'Huéspedes',configuracion:'Tarifas y ajustes',gerencia:'Resumen gerencial',estadisticas:'Estadísticas',finanzas:'Finanzas',colaboradores:'Colaboradores',nomina:'Nómina y roles de pago',auditoria:'Accesos y auditoría'};
   const DEFAULT_RATES = {
     individual:{sin:20,con:25},matrimonial:{sin:29,con:39},
     individual_ventilador:{sin:17,con:null},matrimonial_ventilador:{sin:23,con:null},
@@ -369,8 +369,9 @@
     if(!db.rooms.every(r=>['disponible','ocupada','limpieza','arrendada'].includes(r.status)))db.rooms.forEach(r=>{if(!['disponible','ocupada','limpieza','arrendada'].includes(r.status))r.status=r.type==='arrendada'?'arrendada':'disponible';});
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===ui.view));
     document.getElementById('breadcrumb').textContent=VIEWS[ui.view];
-    const views={inicio:renderDashboard,habitaciones:renderRooms,ingreso:renderCheckin,reservas:renderReservations,salidas:renderCheckout,varios:renderExtras,inventario:renderStock,facturas:renderInvoices,caja:renderCash,huespedes:renderGuests,configuracion:renderSettings};
+    const views={inicio:renderDashboard,habitaciones:renderRooms,ingreso:renderCheckin,reservas:renderReservations,salidas:renderCheckout,varios:renderExtras,inventario:renderStock,facturas:renderInvoices,caja:renderCash,huespedes:renderGuests,configuracion:renderSettings,gerencia:()=>window.hotelAdmin?.render('gerencia',db)||'',estadisticas:()=>window.hotelAdmin?.render('estadisticas',db)||'',finanzas:()=>window.hotelAdmin?.render('finanzas',db)||'',colaboradores:()=>window.hotelAdmin?.render('colaboradores',db)||'',nomina:()=>window.hotelAdmin?.render('nomina',db)||'',auditoria:()=>window.hotelAdmin?.render('auditoria',db)||''};
     document.getElementById('app-view').innerHTML=(views[ui.view]||renderDashboard)()+`<div class="footer-note">Hotel Unicornio · Puerto Francisco de Orellana · ${window.hotelCloud?.ready?'Versión beta sincronizada con Supabase':'Prototipo local'}</div>`;
+    window.hotelAdmin?.bind(render);
     updatePricing();
   }
   function navigate(view){if(view!=='reservas')ui.reservationGuestSearchOpen=false;if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}

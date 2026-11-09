@@ -57,3 +57,6 @@ jobs:
         run: node tests/saldo-fijo-abono-v026.test.cjs
       - name: Verificar catálogo en zonas, filtros y conservación del stock
         run: node tests/varios-zonas-v027.test.cjs
+
+      - name: Validar seguridad y estadísticas del panel gerencial
+        run: node tests/admin-gerencial-v028.test.cjs
