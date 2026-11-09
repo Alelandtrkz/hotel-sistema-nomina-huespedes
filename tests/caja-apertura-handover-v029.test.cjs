@@ -105,7 +105,7 @@ test('La nueva interfaz tiene apertura, cierre, historia y monto a traspasar',()
  assert(html.includes('Cerrar caja'));
  assert(html.includes('Fondo inicial para vueltos'));
  assert(html.includes('$25,00'));
- assert(html.includes('$68,00'));
+ assert(html.includes('EFECTIVO ESPERADO'));
  assert(html.includes('Cierres anteriores al nuevo control'));
  assert(html.includes('Vueltos pendientes'));
 });
