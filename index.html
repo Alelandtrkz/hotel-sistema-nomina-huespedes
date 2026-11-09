@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#152523">
-  <meta name="description" content="Gestión hotelera de demostración: habitaciones, reservas, varios, inventario y cierre de caja para Hotel Unicornio, El Coca.">
+  <meta name="description" content="Hotel Unicornio: gestión de reservas, habitaciones, inventario, finanzas y administración.">
   <title>Hotel Unicornio · Gestión de huéspedes</title>
-  <link rel="stylesheet" href="./styles.css?v=0.27-zonas-varios">
+  <link rel="stylesheet" href="./styles.css?v=0.28-gerencial">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <style>html:not(.hotel-authorized) .app-shell{display:none!important}</style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js" defer></script>
-  <script src="./cloud.js?v=0.27-zonas-varios" defer></script>
+  <script src="./cloud.js?v=0.28-gerencial" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -34,6 +34,12 @@
       </nav>
       <div class="sidebar-section-label gap-top">ADMINISTRACIÓN</div>
       <nav class="nav-items">
+        <button class="nav-item" data-view="gerencia" type="button"><span class="nav-icon">▦</span><span>Resumen gerencial</span></button>
+        <button class="nav-item" data-view="estadisticas" type="button"><span class="nav-icon">▥</span><span>Estadísticas</span></button>
+        <button class="nav-item" data-view="finanzas" type="button"><span class="nav-icon">＄</span><span>Finanzas y costos</span></button>
+        <button class="nav-item" data-view="colaboradores" type="button"><span class="nav-icon">♙</span><span>Colaboradores</span></button>
+        <button class="nav-item" data-view="nomina" type="button"><span class="nav-icon">▤</span><span>Nómina y roles de pago</span></button>
+        <button class="nav-item" data-view="auditoria" type="button"><span class="nav-icon">◇</span><span>Accesos y auditoría</span></button>
         <button class="nav-item" data-view="huespedes" type="button"><span class="nav-icon">♙</span><span>Huéspedes</span></button>
         <button class="nav-item" data-view="configuracion" type="button"><span class="nav-icon">⚙</span><span>Tarifas y ajustes</span></button>
       </nav>
