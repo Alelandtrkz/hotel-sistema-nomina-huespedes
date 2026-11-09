@@ -61,10 +61,13 @@
   }
   async function cashOpen(data){
     cashAuthorized();
+    if(writing||pending)throw new Error("Espere a sincronizar los movimientos antes de abrir caja.");
     var r=await CLIENT.rpc("hotel_cash_open",{
       p_operator:data.operator,p_counted:data.counted,p_note:data.note||""
     });
-    if(r.error)throw r.error;return r.data;
+    if(r.error)throw r.error;
+    revision=Number(r.data.state_revision);
+    return r.data;
   }
   async function cashClose(data){
     cashAuthorized();
@@ -75,7 +78,9 @@
       p_change_given:data.changeGiven,p_other_out:data.otherOut,
       p_expected_revision:revision,p_note:data.note||""
     });
-    if(r.error)throw r.error;return r.data;
+    if(r.error)throw r.error;
+    revision=Number(r.data.state_revision);
+    return r.data;
   }
   cloudApp.cashApi={
     list:cashList,open:cashOpen,close:cashClose,
