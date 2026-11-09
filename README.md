@@ -1,3 +1,23 @@
+# Hotel Unicornio v0.29 — Apertura, arqueo y cierre de caja con fondo de cambio
+
+El módulo **Cierre de caja** pasa a administrar **una sesión de caja por turno**. Al no haber sesión activa, presenta **Abrir caja**: el encargado cuenta físicamente los **sueltos destinados a dar vuelto**, registra el importe y observaciones. El turno se asigna automáticamente según **America/Guayaquil**, de 07:30 a 19:30 (día) y de 19:30 a 07:30 (noche). Las horas posteriores a medianoche antes de las 07:30 pertenecen a la jornada nocturna del día anterior.
+
+**Cierre:** el arqueo se realiza en modal. La fórmula correcta es:
+`efectivo esperado = fondo inicial de cambio + efectivo recibido - vueltos entregados - gastos/retiros efectivos`.
+Las transferencias no se suman al efectivo físico. Ejemplo: fondo $30 + efectivo $40 - vueltos $20 = **$50 esperado**. Si se cuentan $50 y quedan $25 para el siguiente turno, los $25 restantes son dinero a entregar a administración (no otra venta). El siguiente recepcionista deberá contar el fondo realmente recibido; una diferencia exige observación.
+
+**Sin doble conteo:** los importes de apertura y traspaso no son ventas, ingresos del período ni gastos. El nuevo historial de sesiones se guarda por separado en `hotel_cash_sessions`, sin modificar los registros antiguos de `closures` dentro del estado compartido. Cada apertura/cierre queda inmutable para clientes: solo se puede abrir/cerrar mediante RPC transaccionales de Supabase. Un índice parcial impide cajas simultáneas y una restricción única impide abrir más de una vez el mismo turno. Las RPC validan al administrador, importes monetarios, estado y **revisión del estado compartido** para prevenir confirmaciones con datos obsoletos. La apertura y el cierre incrementan la revisión para forzar recarga en otros dispositivos.
+
+**Cobros dentro de caja:** mientras no haya sesión de turno abierta se bloquean nuevas recepciones de dinero por reservas, check-in con abono, ventas directas, abonos de hospedaje, liquidaciones con pago y retiros/gastos de caja. Los cargos pendientes sin cobro siguen disponibles. También se bloquea recibir dinero tras el cambio de horario si no se cerró el turno anterior. Los movimientos se asignan por **timestamp absoluto** `createdAt` entre apertura y cierre para incluir la madrugada en su turno correcto.
+
+**Compatibilidad:** el módulo anterior de cierre sigue en código para pruebas antiguas, pero en la interfaz con Supabase se utiliza el nuevo control. El CSV se descarga para cada sesión, y los cierres antiguos se presentan en historial únicamente de consulta. Para garantizar la integridad se requiere abrir caja antes de registrar cobros nuevos después de desplegar v0.29.
+
+**Limitaciones de esta beta:** el registro de responsable de caja es manual hasta habilitar cuentas individuales de trabajadores. Los movimientos no reemplazan documentos contables y no se hace conciliación bancaria automática. Si se intenta cerrar mientras otro dispositivo ha actualizado cobros, el cierre se rechaza y debe actualizarse la página. No hay manipulación ni migración de pagos históricos.
+
+**Migraciones:** `supabase/migrations/20261109_cash_shift_open_handover_v029.sql` y `20261109_cash_session_version_sync_v029.sql`. **Pruebas:** `tests/caja-apertura-handover-v029.test.cjs`, junto con todas las anteriores.
+
+---
+
 # Hotel Unicornio v0.28 — Administración gerencial
 
 **Secciones nuevas:** Resumen gerencial, Estadísticas, Finanzas y costos, Colaboradores, Nómina y roles de pago, Accesos y auditoría. Publicadas bajo la misma sesión de administrador de Supabase. El resto de recepción se mantiene operativo.
