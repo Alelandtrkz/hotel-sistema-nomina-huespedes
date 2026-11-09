@@ -249,9 +249,11 @@
       changeDeliveredAt:details.status==='dado'?stamp:null,
       changeDeliveredShift:details.status==='dado'?shift:null};
   }
-  function cashChangeFields(prefix,data={}){
+  function cashChangeFields(prefix,data={},amountDue=0){
+    const showAmount=prefix==='payment'||prefix==='final';
     return `<div class="cash-tender-zone section-gap" id="${prefix}-cash-zone">
-      <div class="form-grid cols-2">
+      <div class="form-grid ${showAmount?'cols-3 checkout-cash-grid':'cols-2'}">
+        ${showAmount?`<div class="field"><label>Valor a cobrar</label><div class="cash-amount-preview" id="${prefix}-amount-preview">${money(amountDue)}</div></div>`:''}
         ${field('Efectivo entregado por el huésped (USD)','cashTendered',data.cashTendered??'',{id:prefix+'-cashTendered',type:'number',min:0,step:'0.01',placeholder:'Ej. 40.00'})}
         <div class="field"><label>Vuelto calculado</label><div class="cash-change-preview" id="${prefix}-change-preview">${money(0)}</div></div>
       </div>
@@ -264,6 +266,8 @@
   function updateCashPreview(formId,prefix,amount,method,active=true){
     const form=document.getElementById(formId),zone=document.getElementById(prefix+'-cash-zone');if(!form||!zone)return;
     const show=active&&method==='efectivo';zone.classList.toggle('hidden',!show);
+    const amountPreview=document.getElementById(prefix+'-amount-preview');
+    if(amountPreview)amountPreview.textContent=money(amount);
     const raw=form.querySelector('[name=cashTendered]')?.value||'',tendered=raw===''?Number(amount):Number(raw);
     const change=Number.isFinite(tendered)?asMoney(tendered-Number(amount)):0;
     const preview=document.getElementById(prefix+'-change-preview');
@@ -344,17 +348,27 @@
   }
   function renderPaymentForm(stay){
     const due=dueOf(stay);
-    return `<form id="payment-form" class="section-gap">
-      <input type="hidden" name="stayId" value="${esc(stay.id)}">
-      <div class="form-grid cols-2">
-        ${select('Método de pago','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
-        ${select('Turno','shift',[['dia','Día'],['noche','Noche']],'dia')}
-        ${field('Importe a aplicar a la cuenta (USD)','amount',due>0?due:'',{type:'number',min:0.01,step:'0.01',required:true})}
+    return `<details class="phase2-operation checkout-partial-payment" id="checkout-abono">
+      <summary><span>Abono a la cuenta pendiente</span>
+        <small>Saldo actual: ${money(due)} · registrar un pago parcial sin marcar la salida</small>
+      </summary>
+      <div class="phase2-operation-body">
+        <form id="payment-form">
+          <input type="hidden" name="stayId" value="${esc(stay.id)}">
+          <div class="checkout-abono-intro"><span>Saldo pendiente de la habitación</span><strong>${money(due)}</strong></div>
+          <div class="form-grid cols-2 section-gap">
+            ${select('Método de pago','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
+            ${select('Turno','shift',[['dia','Día'],['noche','Noche']],'dia')}
+          </div>
+          ${field('Valor del abono (USD)','amount','',{id:'payment-amount',type:'number',min:0.01,max:due,step:'0.01',required:true,placeholder:'Ej. 5.00'})}
+          ${cashChangeFields('payment',{},0)}
+          <div class="field hidden section-gap" id="payment-reference"><label for="reference">Código de transferencia *</label><input id="reference" name="reference" placeholder="Referencia bancaria"></div>
+          <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Guardar abono</button>
+          <p class="mini-caption section-gap">El abono reduce el saldo de esta cuenta y queda registrado en caja, pero <strong>no cierra la estadía ni libera la habitación</strong>.</p>
+          ${due<=0?'<p class="mini-caption">La cuenta no tiene saldo pendiente. Puede registrar la salida en la sección de cierre.</p>':''}
+        </form>
       </div>
-      ${cashChangeFields('payment')}
-      <div class="field hidden section-gap" id="payment-reference"><label for="reference">Código de transferencia *</label><input id="reference" name="reference" placeholder="Referencia bancaria"></div>
-      <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago</button>
-    </form>`;
+    </details>`;
   }
 
 
@@ -595,7 +609,7 @@
 
   function renderFinalAccountSection(stay){
   const due=dueOf(stay),pending=pendingChangeOf(stay);
-  return `<details class="phase2-operation phase2-final" id="phase2-final"><summary><span>Cierre de cuenta final y salida</span><small>${due>0?'Saldo por cobrar '+money(due):'Sin saldo de hospedaje'} · pasar habitación a limpieza</small></summary>
+  return `<details class="phase2-operation phase2-final" id="phase2-final"><summary><span>Cierre de cuenta y registrar salida</span><small>${due>0?'Saldo por cobrar '+money(due):'Sin saldo de hospedaje'} · pasar habitación a limpieza</small></summary>
     <div class="phase2-operation-body">
       <div class="phase2-total-grid">
         <div><span>Total hospedaje</span><strong>${money(stay.roomTotal)}</strong></div>
@@ -611,7 +625,7 @@
           ${select('Cobrar saldo mediante','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo','','final-method')}
           ${select('Turno','shift',shiftOptions,'dia','','final-shift')}
         </div>
-        ${cashChangeFields('final')}
+        ${cashChangeFields('final',{},due)}
         <div class="field hidden section-gap" id="final-reference-field"><label for="final-reference">Referencia bancaria *</label><input id="final-reference" name="reference" placeholder="Número de transferencia"></div>`:
         '<p class="mini-caption section-gap">La cuenta está pagada. No se registrará ningún cobro adicional.</p><input type="hidden" name="shift" value="dia">'}
         ${field('Encargado del cierre','operator','',{id:'final-operator',placeholder:'Recepción',required:true})}
@@ -1507,9 +1521,10 @@
     return head('Recepción / cierre','Salidas y cobros','Revise la cuenta, registre abonos y libere habitaciones para limpieza.',btn('Ver habitaciones','go-habitaciones','btn-secondary'))+
     `<div class="two-col"><section class="panel"><div class="panel-head"><div><h2>Habitaciones ocupadas</h2><p>${stays.length} estadías en curso</p></div></div><div class="panel-body checkout-list">${stays.length?stays.map(x=>`<div class="checkout-item"><div class="room-no">${esc(roomOf(x.roomId)?.number||'—')}</div><div class="flex-grow"><strong>${esc(guestName(guestOf(x.guestId)))}</strong><small>Salida: ${datePretty(x.departure)} · saldo ${money(dueOf(x))}</small></div><button type="button" class="btn ${s?.id===x.id?'btn-primary':'btn-secondary'} btn-sm" data-action="select-stay" data-id="${esc(x.id)}">Gestionar</button></div>`).join(''):noRows('No hay huéspedes alojados actualmente.')}</div></section>
     <aside class="panel"><div class="panel-head"><div><h2>Liquidación de estadía</h2><p>Detalle y registro de cobro</p></div></div><div class="panel-body">${s?`<div class="summary-card"><div class="mini-caption">HABITACIÓN ${esc(roomOf(s.roomId)?.number||'—')}</div><div class="summary-price">${money(totalOf(s))}</div><div class="summary-pair"><span>Hospedaje</span><strong>${money(s.roomTotal)}</strong></div><div class="summary-pair"><span>Varios</span><strong>${money(extrasOf(s.id))}</strong></div><div class="summary-pair"><span>Personas adicionales</span><strong>${money(additionalPeopleOf(s))}</strong></div><div class="summary-pair"><span>Abonado</span><strong>${money(paidOf(s))}</strong></div><div class="summary-pair total"><span>Saldo pendiente</span><strong class="${dues>0?'text-red':'text-green'}">${money(dues)}</strong></div><div class="summary-pair"><span>Vuelto pendiente a favor del huésped</span><strong>${money(pendingChangeOf(s))}</strong></div></div>
+      <div class="checkout-actions-heading"><strong>Gestión de pagos y salida</strong><small>Use una de las dos secciones según lo que solicite el huésped.</small></div>
       ${renderPaymentForm(s)}
       ${renderFinalAccountSection(s)}
-      <div class="separator"></div>${btn('Registrar check-out','checkout-stay','btn-primary',`data-id="${esc(s.id)}"`)}<div class="mini-caption section-gap">La salida pasa la habitación a <strong>pendiente de limpieza</strong>. Los saldos se pagan antes de cerrar; los vueltos sin entregar siguen registrados en caja.</div>`:noRows('Seleccione una estadía para gestionar su cuenta.')}</div></aside></div>
+      <p class="mini-caption section-gap">Solo el <strong>cierre de cuenta</strong> registra la salida y cambia la habitación a <strong>pendiente de limpieza</strong>. Los vueltos sin entregar se mantienen pendientes en caja.</p>`:noRows('Seleccione una estadía para gestionar su cuenta.')}</div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Historial de salidas</h2><p>${closedStays.length} estadías finalizadas · movimientos guardados en Supabase</p></div>
     <div class="account-history-pagination">${btn('Más recientes','history-newer','btn-secondary btn-sm',ui.closedHistoryPage<=0?'disabled':'')}
     <span>Página ${ui.closedHistoryPage+1} de ${closedPages}</span>
@@ -1980,7 +1995,9 @@
   function processPayment(){
     const f=readForm('payment-form'),s=stayOf(f.stayId),amount=Number(f.amount);
     if(!s||s.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
-    if(!Number.isFinite(amount)||amount<=0||amount>dueOf(s)+.001){toast('El cobro debe ser mayor que cero y no superar el saldo.','error');return;}
+    if(!Number.isFinite(amount)||!Number.isSafeInteger(Math.round(amount*100))||amount<=0||Math.round(amount*100)>Math.round(dueOf(s)*100)){toast('El abono debe ser mayor que cero y no superar el saldo pendiente.','error');return;}
+    if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione un método de pago válido.','error');return;}
+    if(f.method==='efectivo'&&String(f.cashTendered??'').trim()===''){toast('Ingrese el efectivo recibido antes de registrar el abono.','error');return;}
     if(f.method==='transferencia'&&!String(f.reference||'').trim()){toast('Debe registrar el código de transferencia.','error');return;}
     const tender=resolveTendered(f.cashTendered,f.method,amount,f.changeStatus);if(tender.error){toast(tender.error,'error');return;}
     const paidAt=new Date().toISOString();
@@ -2103,6 +2120,7 @@
   if(due>0){
     if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione un método de pago final.','error');return;}
     if(f.method==='transferencia'&&!String(f.reference||'').trim()){toast('Ingrese la referencia de transferencia antes de cerrar.','error');return;}
+    if(f.method==='efectivo'&&String(f.cashTendered??'').trim()===''){toast('Ingrese el efectivo recibido antes del cierre.','error');return;}
     tender=resolveTendered(f.cashTendered,f.method,due,f.changeStatus);
     if(tender.error){toast(tender.error,'error');return;}
   }
