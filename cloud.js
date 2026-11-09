@@ -445,6 +445,7 @@
       revision=Number(state.revision);
       baseGuests=new Map(allGuests.map(function(g){return [g.id,guestSig(g)];}));
       uiCallbacks.replace(Object.assign({},state.data,{guests:allGuests}));
+      if(window.hotelCash?.state.loaded)window.hotelCash.refresh();
       status("Actualizado desde otro equipo");
     }catch(err){
       status("Sin conexión · reintentar",true);
