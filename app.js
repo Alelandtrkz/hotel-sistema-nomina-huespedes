@@ -375,7 +375,7 @@
     window.hotelCash?.bind(render);
     updatePricing();
   }
-  function navigate(view){if(view!=='reservas')ui.reservationGuestSearchOpen=false;if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
+  function navigate(view){if(view==='caja')window.hotelCash?.refresh();if(view!=='reservas')ui.reservationGuestSearchOpen=false;if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
   function renderDashboard(){
     const available=db.rooms.filter(x=>x.status==='disponible').length,occ=db.rooms.filter(x=>x.status==='ocupada').length,dirty=db.rooms.filter(x=>x.status==='limpieza').length;
     const arrivals=db.reservations.filter(x=>x.arrival===today()&&['pendiente','confirmada'].includes(x.status));
