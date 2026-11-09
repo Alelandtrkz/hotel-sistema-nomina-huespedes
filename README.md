@@ -1,3 +1,18 @@
+# Hotel Unicornio v0.24 — Abonos y cierre de cuenta por separado
+
+En **Salidas y cobros**, después de seleccionar una habitación, aparecen dos secciones plegables independientes:
+
+1. **Abono a la cuenta pendiente**: permite registrar un abono parcial por efectivo o transferencia. Introduzca el **valor del abono** y, si es efectivo, cuánto dinero entregó el huésped. La pantalla muestra **Valor a cobrar**, **Efectivo entregado** y **Vuelto calculado**. Se guarda un movimiento de pago y se descuenta del saldo por cobrar, sin cerrar la estadía ni liberar la habitación.
+2. **Cierre de cuenta y registrar salida**: cobra automáticamente el **saldo restante**, incluyendo cualquier abono anterior. El cuadro de efectivo también identifica claramente el **Valor a cobrar** y el **Vuelto calculado**. Tras confirmar, deja la cuenta saldada, registra la salida y pasa la habitación a **pendiente de limpieza**. Si el saldo está en cero, permite cerrar sin cobrar nuevamente.
+
+Se eliminó el campo genérico **«Importe a aplicar a la cuenta»** que venía precargado con el total, y se eliminó el botón suelto **«Registrar check-out»** de la sección de Salidas para evitar dos caminos diferentes de salida. El abono inicia en blanco y no puede exceder el saldo pendiente; para pagos en efectivo es obligatorio indicar cuánto recibió recepción. Se mantienen las confirmaciones actuales para dinero recibido, vuelto pendiente y salida definitiva.
+
+Las sumas ya existentes `totalOf`, `paidOf` y `dueOf` continúan siendo la fuente de los saldos. Los pagos se siguen guardando en `stay.payments` y se sincronizan mediante el flujo Supabase actual, sin migraciones ni cambios directos sobre registros existentes.
+
+**Pruebas:** `tests/salidas-abonos-cierre-v024.test.cjs` verifica la separación del formulario, indicadores del valor a cobrar, abonos de centavos, métodos de pago, restricciones, conservación de la ocupación durante el abono y cierre con cobro del saldo residual. Ejecutar todos los tests antes de publicar GitHub Pages.
+
+---
+
 # Hotel Unicornio v0.23 — Facturación con datos del huésped y nómina de facturas
 
 ## Registro de ingreso

@@ -728,3 +728,27 @@ td.stock-unknown{color:#718074}
  .invoice-roster .panel-body{padding:10px}
  .invoice-roster .panel-head{padding:15px}
 }
+
+
+/* v0.24 · Salidas: abonos y cierre son operaciones independientes */
+.checkout-actions-heading{display:flex;flex-direction:column;gap:3px;margin:17px 0 11px}
+.checkout-actions-heading strong{font-size:13px;color:#28543b}
+.checkout-actions-heading small{font-size:11px;color:#7a8a7e;line-height:1.45}
+.checkout-partial-payment,.checkout-partial-payment+.phase2-final{margin-top:11px}
+.checkout-partial-payment[open],.checkout-partial-payment+.phase2-final[open]{grid-column:auto}
+.checkout-partial-payment{background:#fbfdfb;border-color:#d6e5d9}
+.checkout-partial-payment summary{color:#285e46}
+.checkout-abono-intro{border:1px solid #dfeade;border-radius:9px;padding:10px 13px;background:#f4f9f5;display:flex;align-items:center;justify-content:space-between;gap:9px}
+.checkout-abono-intro span{font-size:11px;color:#527260;font-weight:700}
+.checkout-abono-intro strong{font-size:18px;color:#2b5b43;white-space:nowrap}
+.checkout-partial-payment #payment-amount{max-width:210px}
+.cash-amount-preview{font-size:23px;font-weight:850;color:#2b5d45;min-height:42px;display:flex;align-items:center}
+.checkout-cash-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px 12px;align-items:end}
+.checkout-cash-grid>.field:first-child{grid-column:1/-1;padding-bottom:4px;border-bottom:1px solid #dce9dd}
+.checkout-cash-grid>.field label{min-height:27px}
+.checkout-cash-grid .field input{min-width:0}
+@media(max-width:460px){
+ .checkout-cash-grid{grid-template-columns:1fr!important}
+ .checkout-cash-grid>.field:first-child{grid-column:1}
+ .checkout-abono-intro{flex-wrap:wrap}
+}
