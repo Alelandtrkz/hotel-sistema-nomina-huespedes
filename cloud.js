@@ -15,6 +15,39 @@
   var recoveryMode=/(?:^|[&#])type=recovery(?:&|$)/.test(window.location.hash || "");
   var recoveryValidated=false;
   var cloudApp = {ready:false,data:null,save:scheduleSave,bindUI:bindUI,refresh:refresh};
+
+  // Operaciones privadas por tabla: cada consulta conserva el token Supabase del administrador.
+  // La protección efectiva reside en RLS, no en esta lista de nombres del navegador.
+  var ADMIN_TABLES = new Set(["hotel_employees","hotel_admin_expenses","hotel_admin_product_costs",
+    "hotel_admin_payroll","hotel_admin_audit"]);
+  function adminTable(table) {
+    if(!ready||disabled||!ADMIN_TABLES.has(table))throw new Error("Acceso administrativo no autorizado.");
+    return CLIENT.from(table);
+  }
+  async function adminList(table) {
+    var q=adminTable(table).select("*");
+    if(table==="hotel_admin_audit")q=q.order("happened_at",{ascending:false}).limit(150);
+    else q=q.limit(2000);
+    var res=await q;
+    if(res.error)throw res.error;
+    return res.data||[];
+  }
+  async function adminInsert(table,payload){
+    if(table==="hotel_admin_audit")throw new Error("La auditoría solo puede ser escrita por la base de datos.");
+    var res=await adminTable(table).insert(payload).select("*").single();
+    if(res.error)throw res.error;return res.data;
+  }
+  async function adminUpdate(table,id,payload){
+    if(table==="hotel_admin_audit"||table==="hotel_admin_product_costs")throw new Error("Operación no permitida.");
+    var res=await adminTable(table).update(payload).eq("id",id).select("*").single();
+    if(res.error)throw res.error;return res.data;
+  }
+  async function adminUpsert(table,payload,conflict){
+    if(table!=="hotel_admin_product_costs"||conflict!=="product_id")throw new Error("Operación no permitida.");
+    var res=await adminTable(table).upsert(payload,{onConflict:"product_id"}).select("*").single();
+    if(res.error)throw res.error;return res.data;
+  }
+  cloudApp.adminApi={list:adminList,insert:adminInsert,update:adminUpdate,upsert:adminUpsert};
   window.hotelCloud = cloudApp;
   var style = document.createElement("style");
   style.textContent = "html:not(.hotel-authorized) .app-shell{display:none!important}" +
@@ -246,9 +279,14 @@
       }
       if(!uiLoaded) {
         uiLoaded=true;
-        var script=document.createElement("script");script.src="./app.js?v=0.27-zonas-varios";
-        script.onerror=function(){status("No se pudo cargar la aplicación",true);};
-        document.body.appendChild(script);
+        var adminScript=document.createElement("script");adminScript.src="./admin.js?v=0.28-gerencial";
+        adminScript.onerror=function(){status("No se pudo cargar el módulo administrativo",true);};
+        adminScript.onload=function(){
+          var script=document.createElement("script");script.src="./app.js?v=0.28-gerencial";
+          script.onerror=function(){status("No se pudo cargar la aplicación",true);};
+          document.body.appendChild(script);
+        };
+        document.body.appendChild(adminScript);
       }
       window.addEventListener("focus",function(){refresh();});
       document.addEventListener("visibilitychange",function(){if(!document.hidden)refresh();});
