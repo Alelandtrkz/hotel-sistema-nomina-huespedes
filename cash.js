@@ -270,6 +270,7 @@ function bind(onRedraw){
  if(bound)return;
  const root=document.getElementById("app-view");if(!root)return;
  bound=true;root.addEventListener("click",click);root.addEventListener("submit",submit);root.addEventListener("input",input);
+ if(!state.loaded&&!state.loading)Promise.resolve().then(load);
 }
 window.hotelCash={render,bind,refresh,canOperate,active,summary,state,currentShiftInfo,csvExport};
 })();
