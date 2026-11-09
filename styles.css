@@ -752,3 +752,13 @@ td.stock-unknown{color:#718074}
  .checkout-cash-grid>.field:first-child{grid-column:1}
  .checkout-abono-intro{flex-wrap:wrap}
 }
+
+
+/* v0.25: separar deuda, importe aplicado, efectivo recibido y vuelto. */
+.checkout-abono-entry{margin-top:12px}
+.checkout-abono-entry>.mini-caption{display:block;margin:6px 0 0;font-size:11px;line-height:1.5;color:#61796b}
+.checkout-abono-entry>.mini-caption strong{color:#285e44}
+.checkout-abono-warning{background:#fff8e8;border:1px solid #edd8a7;border-radius:8px;color:#815b16;font-size:11px;line-height:1.6;padding:9px 11px;margin:10px 0 0}
+.checkout-abono-remaining{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;background:#f6faf7;border:1px solid #dce8df;border-radius:8px;padding:10px 12px;margin-top:10px}
+.checkout-abono-remaining span{font-weight:650;color:#537463;font-size:11px}
+.checkout-abono-remaining strong{font-size:18px;color:#285f41;white-space:nowrap}

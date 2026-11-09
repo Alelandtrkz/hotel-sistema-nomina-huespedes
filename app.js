@@ -268,11 +268,45 @@
     const show=active&&method==='efectivo';zone.classList.toggle('hidden',!show);
     const amountPreview=document.getElementById(prefix+'-amount-preview');
     if(amountPreview)amountPreview.textContent=money(amount);
-    const raw=form.querySelector('[name=cashTendered]')?.value||'',tendered=raw===''?Number(amount):Number(raw);
+    const raw=String(form.querySelector?.('[name=cashTendered]')?.value??readForm(formId).cashTendered??'').trim();
+    const needsExplicitCash=(prefix==='payment'||prefix==='final')&&show;
+    const tendered=raw===''?(needsExplicitCash?NaN:Number(amount)):Number(raw);
     const change=Number.isFinite(tendered)?asMoney(tendered-Number(amount)):0;
     const preview=document.getElementById(prefix+'-change-preview');
-    if(preview){preview.textContent=!Number.isFinite(tendered)?'Revise el importe':change<0?'Efectivo insuficiente':money(change);preview.classList.toggle('text-red',change<0);}
-    document.getElementById(prefix+'-change-choice')?.classList.toggle('hidden',!show||change<=0);
+    if(preview){
+      preview.textContent=raw===''&&needsExplicitCash?'—':!Number.isFinite(tendered)?'Revise el importe':change<0?'Efectivo insuficiente':money(change);
+      preview.classList.toggle('text-red',Number.isFinite(tendered)&&change<0);
+    }
+    document.getElementById(prefix+'-change-choice')?.classList.toggle('hidden',!show||!Number.isFinite(tendered)||change<=0);
+  }
+  // Nunca se puede aplicar a una cuenta un importe superior a su saldo.
+  // Una entrega en efectivo superior es válida, pero el excedente es vuelto.
+  function checkoutAbonoQuote(saldo,requested){
+    const due=asMoney(Math.max(0,Number(saldo)||0));
+    const raw=String(requested??'').trim();
+    const parsed=raw===''?0:Number(raw);
+    if(!Number.isFinite(parsed)||parsed<0)return {due,applied:0,remaining:due,exceeds:false,invalid:raw!==''};
+    const amount=asMoney(parsed);
+    const exceeds=amount>due;
+    const applied=Math.min(due,Math.max(0,amount));
+    return {due,applied,remaining:asMoney(due-applied),exceeds,invalid:false};
+  }
+  function updateCheckoutAbonoPreview(){
+    const form=document.getElementById('payment-form');if(!form)return;
+    const data=readForm('payment-form'),stay=stayOf(data.stayId);
+    if(!stay)return;
+    const input=form.querySelector?.('[name=amount]'),quote=checkoutAbonoQuote(dueOf(stay),input?.value??data.amount);
+    const note=document.getElementById('payment-amount-warning');
+    if(quote.exceeds&&input){
+      input.value=quote.applied.toFixed(2);
+      if(note){
+        note.textContent='El abono no puede superar '+money(quote.due)+'. Se ajustó a ese saldo; si el huésped entrega más efectivo, el excedente se devuelve como vuelto.';
+        note.classList.remove('hidden');
+      }
+    }else if(note){note.classList.add('hidden');note.textContent='';}
+    const remaining=document.getElementById('payment-remaining-preview');
+    if(remaining)remaining.textContent=money(quote.remaining);
+    updateCashPreview('payment-form','payment',quote.applied,data.method);
   }
   const readForm=id=>{const e=document.getElementById(id);return e?Object.fromEntries(new FormData(e).entries()):{};};
   const validDoc=s=>checkEcuadorDocument(s).valid; // Validación estructural y de dígito verificador, no prueba identidad real.
@@ -360,8 +394,16 @@
             ${select('Método de pago','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
             ${select('Turno','shift',[['dia','Día'],['noche','Noche']],'dia')}
           </div>
-          ${field('Valor del abono (USD)','amount','',{id:'payment-amount',type:'number',min:0.01,max:due,step:'0.01',required:true,placeholder:'Ej. 5.00'})}
+          <div class="checkout-abono-entry">
+            ${field('Valor del abono (USD)','amount','',{id:'payment-amount',type:'number',min:0.01,max:due,step:'0.01',required:true,placeholder:'Ej. 5.00'})}
+            <small class="mini-caption">Máximo a abonar: <strong>${money(due)}</strong>. Si le entregan más efectivo, indique el importe recibido abajo para calcular el vuelto.</small>
+            <p id="payment-amount-warning" class="checkout-abono-warning hidden" role="status"></p>
+          </div>
           ${cashChangeFields('payment',{},0)}
+          <div class="checkout-abono-remaining" aria-live="polite">
+            <span>Saldo que quedará después del abono</span>
+            <strong id="payment-remaining-preview">${money(due)}</strong>
+          </div>
           <div class="field hidden section-gap" id="payment-reference"><label for="reference">Código de transferencia *</label><input id="reference" name="reference" placeholder="Referencia bancaria"></div>
           <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago parcial</button>
           <p class="mini-caption section-gap">El abono reduce el saldo de esta cuenta y queda registrado en caja, pero <strong>no cierra la estadía ni libera la habitación</strong>.</p>
@@ -1777,7 +1819,7 @@
     const xForm=document.getElementById('extra-form');
     if(xForm){const f=readForm('extra-form'),p=productOf(f.productId);const el=document.getElementById('extra-preview');if(el)el.textContent=!p?'Seleccione un producto':p.price!==null&&Number(p.price)>0?money(Number(p.price)*(Number(f.quantity)||0)):'Precio sin configurar';updateCashPreview('extra-form','extra',asMoney(Number(p?.price||0)*Number(f.quantity||0)),f.method,f.stayId==='caja');}
     const manual=document.getElementById('manual-extra-form');if(manual){const f=readForm('manual-extra-form');updateCashPreview('manual-extra-form','manual',asMoney(Number(f.amount||0)),f.method,f.stayId==='caja');}
-    const payment=document.getElementById('payment-form');if(payment){const f=readForm('payment-form');updateCashPreview('payment-form','payment',asMoney(Number(f.amount||0)),f.method);}
+    if(document.getElementById('payment-form'))updateCheckoutAbonoPreview();
     const roomExtraForm=document.getElementById('room-extra-form');
     if(roomExtraForm){
       const f=readForm('room-extra-form'),product=productOf(f.productId);

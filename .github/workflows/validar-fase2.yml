@@ -51,3 +51,5 @@ jobs:
         run: node tests/facturas-nomina-v023.test.cjs
       - name: Validar abonos parciales y salida con saldo restante
         run: node tests/salidas-abonos-cierre-v024.test.cjs
+      - name: Validar límite de abono y vuelto sobre efectivo recibido
+        run: node tests/abono-vuelto-maximo-v025.test.cjs
