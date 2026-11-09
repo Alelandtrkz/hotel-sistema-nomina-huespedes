@@ -1211,8 +1211,42 @@
       availableForCheckin(r,d.arrival,d.departure,d.primary===false?null:ui.prefillBookingId));
     return [['','Seleccionar habitación disponible'],...rooms.map(r=>[r.id,'Habitación '+r.number])];
   }
+
+  function sameGuestInvoiceData(d){
+    return {invoiceName:guestName(d),invoiceId:String(d.document||'').trim(),
+      invoiceAddress:String(d.address||d.invoiceAddress||'').trim(),
+      invoiceEmail:String(d.email||d.invoiceEmail||'').trim()};
+  }
+  function syncSameGuestInvoice(){
+    const form=document.getElementById('checkin-form');
+    if(!form)return;
+    const same=document.getElementById('checkin-invoice-same');
+    const enabled=form.querySelector('[name=invoice]')?.value==='si'&&Boolean(same?.checked);
+    const isInvoice=form.querySelector('[name=invoice]')?.value==='si';
+    document.getElementById('invoice-same-wrap')?.classList.toggle('hidden',!isInvoice);
+    document.getElementById('invoice-fields')?.classList.toggle('hidden',!isInvoice);
+    document.getElementById('invoice-same-hint')?.classList.toggle('hidden',!isInvoice);
+    const fields=document.getElementById('invoice-fields');
+    if(!fields)return;
+    const data=readForm('checkin-form');
+    if(enabled){
+      const matched=sameGuestInvoiceData(data);
+      for(const [key,val] of Object.entries(matched)){
+        const input=fields.querySelector('[name='+key+']');
+        if(!input)continue;
+        input.value=val;
+        // Si falta dirección/correo en el huésped, se pueden completar aquí.
+        input.readOnly=(key==='invoiceName'||key==='invoiceId'||(key==='invoiceAddress'&&Boolean(data.address))||(key==='invoiceEmail'&&Boolean(data.email)));
+      }
+    }else fields.querySelectorAll('input').forEach(input=>{input.readOnly=false;});
+    const hint=document.getElementById('invoice-same-hint');
+    if(hint)hint.textContent=enabled?'Nombre y documento del huésped cargados automáticamente. Si faltan dirección o correo, complételos antes de guardar.':'Puede ingresar datos de facturación diferentes.';
+    ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form'),invoiceSameData:enabled?'si':''};
+  }
+
   function renderCheckin(){
     const d=ui.checkinDraft||(ui.checkinDraft=initialCheckinDraft());
+    if(d.invoice==='si'&&d.invoiceSameData==='si')Object.assign(d,sameGuestInvoiceData(d));
     const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=checkinNightRate(d.type,d.breakfast,d.paymentMethod),stayTotal=estimation.grandTotal,b=reservationOf(ui.prefillBookingId);
     const bookedAdvance=b?.advance||0,initialPayment=checkinPaymentAmount(d,stayTotal,bookedAdvance),choice=checkinPaymentChoice(d.paymentMethod),amountPending=asMoney(Math.max(0,(stayTotal||0)-bookedAdvance));
     return head('Recepción / check-in','Registrar ingreso de huésped','Búsqueda por cédula y asignación de una o varias habitaciones al mismo titular.',btn('Ver habitaciones','go-habitaciones','btn-secondary'))+
@@ -1255,12 +1289,21 @@
         <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'No entra dinero en caja; queda saldo pendiente por habitación.':'Cobro total calculado automáticamente; anticipos descontados.'}</div>
         <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">El descuento solo se permite por transferencia, sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
         </section>
-        <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
-          ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice)}
-        </div><div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
-          ${field('Nombre / razón social','invoiceName',d.invoiceName,{placeholder:'Nombre de facturación'})}${field('Cédula / RUC','invoiceId',d.invoiceId,{placeholder:'Identificación tributaria'})}
-          ${field('Dirección','invoiceAddress',d.invoiceAddress,{placeholder:'Dirección para factura'})}${field('Correo para factura','invoiceEmail',d.invoiceEmail,{type:'email',placeholder:'factura@ejemplo.com'})}
-        </div><div class="form-grid section-gap">${field('Observaciones / solicitudes adicionales','notes',d.notes,{textarea:true,full:true,placeholder:'Horario de llegada, requerimientos, observaciones...'})}</div>
+        <div class="form-section-label">04 · Facturación y observaciones</div>
+        <div class="invoice-choice-row">
+          ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice,'','checkin-invoice-choice')}
+          <label class="checkin-confirm-label invoice-same-wrap ${d.invoice==='si'?'':'hidden'}" id="invoice-same-wrap" for="checkin-invoice-same">
+            <input type="checkbox" id="checkin-invoice-same" name="invoiceSameData" value="si" ${d.invoiceSameData==='si'&&d.invoice==='si'?'checked':''}>
+            <span>Factura a los mismos datos del huésped</span>
+          </label>
+        </div>
+        <div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
+          ${field('Nombre / razón social','invoiceName',d.invoiceName,{placeholder:'Nombre de facturación',readonly:d.invoice==='si'&&d.invoiceSameData==='si'})}
+          ${field('Cédula / RUC','invoiceId',d.invoiceId,{placeholder:'Identificación tributaria',readonly:d.invoice==='si'&&d.invoiceSameData==='si'})}
+          ${field('Dirección','invoiceAddress',d.invoiceAddress,{placeholder:'Dirección para factura',readonly:d.invoice==='si'&&d.invoiceSameData==='si'&&Boolean(d.address)})}
+          ${field('Correo para factura','invoiceEmail',d.invoiceEmail,{type:'email',placeholder:'factura@ejemplo.com',readonly:d.invoice==='si'&&d.invoiceSameData==='si'&&Boolean(d.email)})}
+        </div>
+        <p id="invoice-same-hint" class="mini-caption ${d.invoice==='si'?'':'hidden'}">${d.invoiceSameData==='si'?'Nombre y documento del huésped cargados. Si faltan dirección o correo, complételos antes de guardar.':'Puede ingresar datos de facturación distintos a los del huésped.'}</p><div class="form-grid section-gap">${field('Observaciones / solicitudes adicionales','notes',d.notes,{textarea:true,full:true,placeholder:'Horario de llegada, requerimientos, observaciones...'})}</div>
         <div class="form-actions"><button class="btn btn-secondary" type="reset" id="clear-checkin">Limpiar formulario</button><button class="btn btn-primary" type="submit" id="checkin-submit">${choice?.method==='por_cobrar'?'Solicitar ingreso por cobrar':'Registrar ingreso con pago'}</button></div>
       </form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Resumen de hospedaje</h2><p>Tarifa según configuración del hotel</p></div></div><div class="panel-body">
@@ -1754,8 +1797,11 @@
   if(!checked.valid){toast(checked.error,'error');return;}
   const plan=prepareCheckinGroup(f,b);
   if(plan.error){toast(plan.error,'error');refreshRoomSelect('ingreso');return;}
-  if(f.invoice==='si'&&(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim())){
-    toast('Complete los cuatro datos de facturación.','error');return;
+  if(f.invoice==='si'){
+    if(f.invoiceSameData==='si')Object.assign(f,sameGuestInvoiceData(f));
+    if(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim()){
+      toast('Complete los cuatro datos de facturación. Si usa los datos del huésped, confirme dirección y correo.','error');return;
+    }
   }
   if(plan.method==='por_cobrar'){
     const unpaid=asMoney(plan.grandTotal-plan.deposit);
@@ -1788,6 +1834,7 @@
       }:null,
       paymentVerifiedAt:item.payment>0?checkinAt:null,
       invoiceRequested:f.invoice==='si',
+      invoiceSameData:f.invoice==='si'&&f.invoiceSameData==='si',
       invoiceDetails:f.invoice==='si'?{name:f.invoiceName.trim(),identification:f.invoiceId.trim(),
         address:f.invoiceAddress.trim(),email:f.invoiceEmail.trim()}:null,
       notes:String(f.notes||'').trim(),
