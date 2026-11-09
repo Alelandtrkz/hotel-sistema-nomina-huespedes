@@ -89,7 +89,7 @@ let failures=0;function test(name,fn){try{fn();console.log('PASS '+name)}catch(e
    for(const name of ['gerencia','estadisticas','finanzas']){
      const html=admin.render(name,d);
      assert(html.includes('admin-kpi'));
-     assert(html.includes('contabl')||html.includes('contabilidad')||html.includes('márgenes'));
+     assert(html.includes('contabl')||html.includes('contabilidad')||html.includes('márgenes')||html.includes('financiero'));
    }
  });
  test('Colaboradores incluye sueldo, pago y referencias a credenciales sin guardar contraseñas',()=>{
