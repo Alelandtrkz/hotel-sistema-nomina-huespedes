@@ -1,3 +1,25 @@
+# Hotel Unicornio v0.28 — Administración gerencial
+
+**Secciones nuevas:** Resumen gerencial, Estadísticas, Finanzas y costos, Colaboradores, Nómina y roles de pago, Accesos y auditoría. Publicadas bajo la misma sesión de administrador de Supabase. El resto de recepción se mantiene operativo.
+
+**Seguridad:** los sueldos, documentos laborales, costos, gastos, roles y eventos de auditoría residen en nuevas tablas de Supabase y **no** en el objeto `hotel_cloud_state` que se comparte entre los módulos de recepción. Las tablas tienen RLS con comprobación de `hotel_staff.role='admin'` y `active=true`; ninguna de ellas concede acceso de lectura a recepcionistas. Las operaciones de escritura quedan auditadas por triggers de la base. Los roles pagados son inmutables. SQL reproducible en `supabase/migrations/20261109_admin_finanzas_nomina_v028.sql` y su corrección `20261109_admin_auditoria_fix_v028.sql`.
+
+**Estadísticas:** contabiliza el importe operativo de estancias registradas en el periodo, ventas de varios una sola vez (incluidas las cargadas a habitaciones), cobros/anticipos netos aplicados, facturas externas registradas y ocupación de habitaciones. Los ingresos no se confunden con los cobros. La fecha de alta de la estancia no es devengo fiscal; las cifras son gerenciales y requieren conciliación contable, especialmente las ampliaciones de estancia y los movimientos históricos de caja.
+
+**Costos y márgenes:** el administrador registra costos unitarios por producto en tabla protegida. Si una venta carece de costo reconocido, no se muestra un margen global inventado. No es todavía un libro contable ni lleva valorización por lotes.
+
+**Finanzas:** formularios de gastos por concepto, fecha, forma de pago y estado pendiente/pagado, con historial filtrado por mes. **No se incorporan automáticamente los egresos históricos de Cierre de caja** para evitar duplicarlos inadvertidamente: requieren conciliación.
+
+**Colaboradores:** expedientes con cargo, sueldo, forma de contrato, fecha de ingreso, día de pago y correo de referencia. No se almacenan contraseñas en la aplicación. **Crear y activar nuevas credenciales de empleados no está automatizado todavía**: queda preparada la relación `auth_user_id` para vincular cuentas de Supabase Auth después de habilitar y verificar permisos individuales.
+
+**Nómina:** generación de borradores por colaborador y mes, edición manual de adicionales, descuentos y costo patronal; transición de revisión a pagado con referencia y fecha. **No realiza cálculos legales automáticos** de IESS, décimos, vacaciones, fondos de reserva o liquidaciones; los valores requieren revisión profesional. Los registros marcados como pagados son inmutables por trigger.
+
+**Limitaciones conocidas:** los indicadores de flujo no equivalen a utilidad neta; no hay emisión de roles legales en PDF, control de asistencia, cálculo de salario por horas ni acceso de empleados habilitado. El sistema sigue siendo beta. La aplicación requiere revisión tributaria, laboral y de seguridad antes de usarse para pagos reales.
+
+**Tests:** `tests/admin-gerencial-v028.test.cjs` comprueba el módulo, los cálculos, menús, controles y RLS en SQL. Se ejecuta en CI y antes de publicar GitHub Pages.
+
+---
+
 # Hotel Unicornio v0.27 — Catálogo de Varios por zonas, sin espacio vacío
 
 La página **Varios y productos** muestra el **Catálogo de precios** con encabezado compacto, búsqueda por nombre o código de barras, filtro de categoría y pestañas **Todos, Vitrina, Nevera, Nevera helados y Bodega**. Las tarjetas pasan a estar **debajo de los controles** y ocupan todo el ancho disponible. La cuadrícula es adaptable a escritorio, tablet y celular.
