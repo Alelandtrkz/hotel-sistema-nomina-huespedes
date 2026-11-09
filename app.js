@@ -268,7 +268,7 @@
     const show=active&&method==='efectivo';zone.classList.toggle('hidden',!show);
     const amountPreview=document.getElementById(prefix+'-amount-preview');
     if(amountPreview)amountPreview.textContent=money(amount);
-    const raw=String(form.querySelector('[name=cashTendered]')?.value??'').trim();
+    const raw=String(form.querySelector?.('[name=cashTendered]')?.value??readForm(formId).cashTendered??'').trim();
     const needsExplicitCash=(prefix==='payment'||prefix==='final')&&show;
     const tendered=raw===''?(needsExplicitCash?NaN:Number(amount)):Number(raw);
     const change=Number.isFinite(tendered)?asMoney(tendered-Number(amount)):0;
