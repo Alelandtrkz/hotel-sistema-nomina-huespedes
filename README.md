@@ -1,3 +1,25 @@
+# Hotel Unicornio v0.25 — Abono superior a deuda y cálculo de vuelto
+
+## Situación resuelta
+
+Cuando el huésped debía **$10,07** y recepción introducía **$20,00** tanto en «Valor del abono» como en «Efectivo entregado», la interfaz mostraba «Valor a cobrar $20,00» y «Vuelto $0,00» aunque el saldo real era de $10,07. El guardado impedía sobreabonos, pero la previsualización era confusa.
+
+La interfaz de **Salidas y cobros → Abono a la cuenta pendiente** ahora mantiene estas reglas:
+
+- «Saldo pendiente» indica toda la deuda de la habitación.
+- «Valor del abono» indica **solo lo que se aplicará a la cuenta**. Si se introduce un valor superior al saldo, el campo se ajusta automáticamente al máximo adeudado y aparece un aviso explicativo. No se guarda un sobreabono.
+- «Valor a cobrar» muestra el abono válido, no el efectivo que llegó a caja.
+- «Efectivo entregado» indica el dinero físico recibido, que puede superar el valor aplicado.
+- «Vuelto calculado» es efectivo recibido menos abono aplicado; aparece «—» si falta introducir el efectivo (no presupone que el huésped entregó el valor exacto).
+- «Saldo que quedará después del abono» se recalcula inmediatamente; **el abono no cierra la estadía**.
+- Si hay vuelto, el sistema sigue exigiendo la decisión «Vuelto dado» o «Vuelto pendiente». La salida de la habitación sigue siendo otra operación independiente.
+
+**Ejemplo:** saldo $10,07, abono escrito $20,00, efectivo entregado $20,00 → se ajusta el abono a $10,07, «Valor a cobrar» $10,07, vuelto $9,93 y saldo restante $0,00. Si se abonan $5,00, el saldo restante es $5,07.
+
+La validación de `processPayment` sigue rechazando abonos mayores al saldo si alguien intenta omitir la interfaz; no se modifican datos reales ni el esquema de Supabase. Suite `tests/abono-vuelto-maximo-v025.test.cjs` incorporada a validación y al paso previo a la publicación en Pages.
+
+---
+
 # Hotel Unicornio v0.24 — Abonos y cierre de cuenta por separado
 
 En **Salidas y cobros**, después de seleccionar una habitación, aparecen dos secciones plegables independientes:
