@@ -69,7 +69,7 @@ test('El abono empieza vacío para evitar cobro total accidental',()=>{
  assert(html.includes('id="payment-amount"'));
  assert(html.includes('placeholder="Ej. 5.00"'));
  assert(html.includes('value=""'));
- assert(html.includes('Guardar abono'));
+ assert(html.includes('Registrar pago parcial'));
  assert(html.includes('sin marcar la salida'));
 });
 test('El vuelto se calcula contra el abono y muestra el valor a cobrar en vivo',()=>{
