@@ -43,6 +43,7 @@ jobs:
           node tests/catalogo-tanda2-v022.test.cjs
           node tests/facturas-nomina-v023.test.cjs
           node tests/salidas-abonos-cierre-v024.test.cjs
+          node tests/abono-vuelto-maximo-v025.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos
