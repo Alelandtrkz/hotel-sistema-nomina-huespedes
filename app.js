@@ -287,7 +287,7 @@
     const due=asMoney(Math.max(0,Number(saldo)||0));
     const raw=String(receivedValue??'').trim();
     if(raw==='')return {due,applied:0,received:0,change:0,remaining:due,missing:true,invalid:false,exceeds:false};
-    if(!/^\\d+(?:\\.\\d{1,2})?$/.test(raw))return {due,applied:0,received:0,change:0,remaining:due,missing:false,invalid:true,exceeds:false};
+    if(!/^\d+(?:\.\d{1,2})?$/.test(raw))return {due,applied:0,received:0,change:0,remaining:due,missing:false,invalid:true,exceeds:false};
     const parsed=Number(raw),cents=moneyCents(parsed);
     if(!Number.isSafeInteger(cents)||cents<=0||!Number.isFinite(parsed))
       return {due,applied:0,received:0,change:0,remaining:due,missing:false,invalid:true,exceeds:false};
