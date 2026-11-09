@@ -1385,6 +1385,82 @@
     document.getElementById('reservation-document')?.focus();
   }
 
+
+  // Cola administrativa únicamente: una factura electrónica se emite en la aplicación externa.
+  // El saldo por facturar NO es el saldo por cobrar, pues puede existir pago anticipado.
+  function invoiceRecordsOf(stay){
+    return Array.isArray(stay.invoiceRecords)?stay.invoiceRecords:
+      stay.invoiceRecord?.status==='emitida'?[stay.invoiceRecord]:[];
+  }
+  const invoiceAmountIssued=stay=>asMoney(invoiceRecordsOf(stay).reduce((sum,record)=>sum+Number(record.amount||0),0));
+  const invoiceAmountPending=stay=>asMoney(Math.max(0,totalOf(stay)-invoiceAmountIssued(stay)));
+  const invoiceQueue=()=>db.stays.filter(stay=>stay.invoiceRequested===true).sort((a,b)=>
+    (a.createdAt||'').localeCompare(b.createdAt||''));
+  function renderInvoices(){
+    const all=invoiceQueue(),pending=all.filter(stay=>invoiceAmountPending(stay)>.001),
+      issued=all.filter(stay=>invoiceAmountPending(stay)<=.001),
+      visible=all.filter(stay=>ui.invoiceFilter==='todas'||(ui.invoiceFilter==='emitidas'?invoiceAmountPending(stay)<=.001:invoiceAmountPending(stay)>.001));
+    const outstanding=asMoney(pending.reduce((sum,stay)=>sum+invoiceAmountPending(stay),0));
+    return head('Recepción / control de facturación','Facturas por emitir',
+      'Nómina de habitaciones que solicitaron factura. Compruebe los valores y emita el comprobante en su aplicación de facturación.',btn('Registrar ingreso','go-ingreso','btn-secondary'))+
+      `<div class="metrics invoice-metrics">
+        <div class="metric"><div class="metric-top"><span class="metric-title">Facturas pendientes</span></div><div class="metric-value">${pending.length}</div></div>
+        <div class="metric"><div class="metric-top"><span class="metric-title">Valor pendiente de facturar</span></div><div class="metric-value">${money(outstanding)}</div></div>
+        <div class="metric"><div class="metric-top"><span class="metric-title">Cuentas completamente facturadas</span></div><div class="metric-value">${issued.length}</div></div>
+      </div>
+      <section class="panel invoice-roster section-gap">
+        <div class="panel-head"><div><h2>Nómina de facturación</h2><p>${all.length} habitaciones con solicitud de factura · cada habitación se controla por separado</p></div>
+        <div class="invoice-filter-wrap"><label for="invoice-status-filter">Mostrar</label>
+          <select id="invoice-status-filter">
+            ${selectOptions([['pendientes','Pendientes'],['emitidas','Facturadas'],['todas','Todas']],ui.invoiceFilter||'pendientes')}
+          </select></div></div>
+        <div class="panel-body">
+        <p class="mini-caption invoice-legal-note">Estos importes corresponden al total operativo registrado por habitación, incluidos los cargos adicionales. Verifique IVA, conceptos tributarios y valores definitivos antes de emitir en su sistema autorizado. Esta aplicación no emite facturas del SRI.</p>
+        ${visible.length?`<div class="table-wrap"><table class="table invoice-table">
+          <thead><tr><th>Huésped / facturar a</th><th>Hab. / estadía</th><th>Total cuenta</th><th>Por facturar</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody>${visible.map(stay=>{
+             const room=roomOf(stay.roomId),guest=guestOf(stay.guestId),details=stay.invoiceDetails||{},
+               pendingValue=invoiceAmountPending(stay),billed=invoiceAmountIssued(stay),
+               records=invoiceRecordsOf(stay);
+             return `<tr>
+               <td><strong>${esc(guestName(guest)||'Sin nombre')}</strong>
+                 <small class="mini-caption">Facturar a: ${esc(details.name||'Sin datos de facturación')}</small>
+                 <small class="mini-caption">Documento: ${esc(details.identification||'Pendiente')}</small>
+                 <details class="invoice-contact-details"><summary>Ver dirección y correo</summary><small>${esc(details.address||'Dirección pendiente')}</small><small>${esc(details.email||'Correo pendiente')}</small></details>
+               </td>
+               <td><strong>Habitación ${esc(room?.number||'—')}</strong><small class="mini-caption">${datePretty(stay.arrival)} – ${datePretty(stay.departure)}</small><small class="mini-caption">${stay.status==='activa'?'Ocupada / en curso':'Estadía finalizada'}</small></td>
+               <td><strong>${money(totalOf(stay))}</strong><small class="mini-caption">Ya facturado: ${money(billed)}</small><small class="mini-caption">Cobrado al huésped: ${money(paidOf(stay))}</small></td>
+               <td><strong class="${pendingValue>.001?'text-red':'text-green'}">${money(pendingValue)}</strong></td>
+               <td>${pendingValue>.001?tag('Pendiente','warning'):tag('Facturada','success')}
+                 ${records.length?`<details class="invoice-contact-details"><summary>Comprobante(s): ${records.length}</summary>
+                   ${records.map(r=>`<small>${esc(r.number||'Sin referencia')} · ${money(r.amount)} · ${timePretty(r.issuedAt)}</small>`).join('')}</details>`:''}</td>
+               <td>${pendingValue>.001?`<form id="invoice-issued-${esc(stay.id)}" class="invoice-issued-form" autocomplete="off">
+                   <label for="invoice-number-${esc(stay.id)}">N.º factura emitida externamente</label>
+                   <input id="invoice-number-${esc(stay.id)}" name="invoiceNumber" type="text" maxlength="60" required placeholder="001-001-000000001">
+                   <button type="submit" class="btn btn-primary btn-sm">Marcar emitida</button>
+                 </form>`:`<span class="mini-caption">Sin saldos por facturar</span>`}</td>
+             </tr>`;
+          }).join('')}</tbody></table></div>`:noRows(ui.invoiceFilter==='pendientes'?'No hay facturas pendientes de emisión.':'No hay registros para este filtro.')}
+        </div>
+      </section>`;
+  }
+  function processInvoiceIssued(stayId){
+    const stay=stayOf(stayId),formId='invoice-issued-'+stayId,form=readForm(formId);
+    if(!stay||!stay.invoiceRequested){toast('No existe una solicitud de factura para esa habitación.','error');return;}
+    const amount=invoiceAmountPending(stay),number=String(form.invoiceNumber||'').trim();
+    if(amount<=0){toast('Esta cuenta no tiene valores pendientes de facturar.','error');return;}
+    if(!/^[A-Za-z0-9][A-Za-z0-9 ./-]{2,59}$/.test(number)){
+      toast('Ingrese la referencia de la factura ya emitida en su sistema de facturación (3 a 60 caracteres).','error');return;
+    }
+    const duplicate=db.stays.some(s=>invoiceRecordsOf(s).some(r=>String(r.number||'').toUpperCase()===number.toUpperCase()));
+    if(duplicate){toast('Ese número de factura ya figura registrado. Revise antes de continuar.','error');return;}
+    if(!window.confirm('¿Confirma que la factura '+number+' por '+money(amount)+' ya fue EMITIDA en su aplicación externa? Esta acción solamente la marca en la nómina; no emite documentos tributarios.'))return;
+    if(!Array.isArray(stay.invoiceRecords))stay.invoiceRecords=invoiceRecordsOf(stay).slice();
+    stay.invoiceRecords.push({id:uid('invoice'),number,amount,issuedAt:new Date().toISOString(),status:'emitida',
+      source:'registro_manual_sistema_externo'});
+    persist();render();toast('Factura '+number+' registrada como emitida en el control administrativo.');
+  }
+
   function renderReservations(){
     const d=ui.reservationDraft||(ui.reservationDraft=initialReservationDraft());
     const nights=getNightCount(d.arrival,d.departure),total=rate(d.type,d.breakfast)*nights;
@@ -2191,6 +2267,7 @@
       case 'go-inicio':navigate('inicio');break;
       case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinVariosOpen=false;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
+      case 'go-facturas':navigate('facturas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
       case 'toggle-room-dates':{
         ui.roomDateMode=!ui.roomDateMode;
@@ -2386,7 +2463,9 @@
       const values=readForm('checkin-form');
       ui.checkinDraft={...ui.checkinDraft,...values,
         paymentVerified:values.paymentVerified||'',creditConfirmed:values.creditConfirmed||''};
-      syncCheckinVariosForm();updatePricing();
+      syncCheckinVariosForm();
+      if(['firstName','secondName','lastName','secondLastName','document','email','address'].includes(target.name))syncSameGuestInvoice();
+      updatePricing();
     }
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
     if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-breakfast-form','#room-extension-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
@@ -2395,6 +2474,7 @@
     const el=e.target;
     if(el.id==='filter-product-category'){ui.productCategory=el.value;render();return;}
     if(el.id==='filter-stock-category'){ui.stockCategory=el.value;render();return;}
+    if(el.id==='invoice-status-filter'){ui.invoiceFilter=el.value;render();return;}
     if(['stock-product','stock-location','stock-mode'].includes(el.id)){updateStockPreview();return;}
     if(el.id==='cash-date'||el.id==='cash-shift'){ui.cashDraft=readForm('cash-close-form');if(el.id==='cash-date')ui.cashDate=el.value;else ui.cashShift=el.value;render();return;}
     if(el.id==='room-plan-date'){
@@ -2422,7 +2502,7 @@
         const transfer=checkinPaymentChoice(el.value)?.method==='transferencia';
         document.getElementById('transfer-field')?.classList.toggle('hidden',!transfer);
       }
-      if(el.name==='invoice')document.getElementById('invoice-fields')?.classList.toggle('hidden',el.value!=='si');
+      if(el.name==='invoice'||el.name==='invoiceSameData')syncSameGuestInvoice();
       updatePricing();return;
     }
     if(el.closest('#reservation-form')){
@@ -2436,6 +2516,7 @@
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
     const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-barcode-form':()=>applyRoomBarcode(document.getElementById('room-barcode-manual')?.value),'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
+    if(id.startsWith('invoice-issued-')){e.preventDefault();processInvoiceIssued(id.slice('invoice-issued-'.length));return;}
     if(handlers[id]){e.preventDefault();handlers[id]();}
   });
   document.addEventListener('reset',e=>{
