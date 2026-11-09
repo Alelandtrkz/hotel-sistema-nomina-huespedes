@@ -272,7 +272,7 @@ function auditPanel(){
 function render(view,db){
  if(!ADMIN_VIEWS.has(view))return "";
  if(!state.loaded){
-   if(!state.loading)Promise.resolve().then(load);
+   if(!state.loading&&!state.error)Promise.resolve().then(load);
    return title("Administración","Cargando datos protegidos","Consultando el panel privado en Supabase.")+
      (state.error?banner('<strong>Error:</strong> '+esc(state.error)+' <button data-admin-action="retry" class="admin-link">Reintentar</button>'):
      '<div class="panel"><div class="panel-body">Validando permisos y cargando colaboradores, gastos y nómina...</div></div>');
@@ -353,7 +353,7 @@ async function submit(event){
        status:intent==="paid"?"pagado":"revisado"};
      if(intent==="paid"){
        if(String(fields.payment_reference||"").trim().length<3)throw Error("Ingrese la referencia del pago efectuado.");
-       if(!window.confirm("¿Confirma que ya pagó "+usd(cents(base+extra-deduct))+" a este colaborador? Esta operación quedará bloqueada."))return;
+       if(!window.confirm("¿Confirma que ya pagó "+usd(cents(base+extra-deduct))+" a este colaborador? Esta operación quedará bloqueada."))throw new Error("Operación cancelada. No se registró ningún pago.");
        payload.payment_reference=String(fields.payment_reference).trim();
        payload.paid_at=new Date().toISOString();
      }
@@ -394,5 +394,5 @@ function bind(onRedraw){
    }
  });
 }
-window.hotelAdmin={render,bind,refresh,state,hotelData,checkout:()=>ADMIN_VIEWS};
+window.hotelAdmin={render,bind,refresh,state,hotelData};
 })();
