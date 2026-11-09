@@ -48,6 +48,45 @@
     if(res.error)throw res.error;return res.data;
   }
   cloudApp.adminApi={list:adminList,insert:adminInsert,update:adminUpdate,upsert:adminUpsert};
+
+  // Sesiones de recepción: fondos de cambio y arqueos se escriben en RPC atómicas.
+  // Los importes guardados aquí NO forman parte de las ventas del estado compartido.
+  function cashAuthorized(){
+    if(!ready||disabled||!CLIENT)throw new Error("No hay una sesión administrativa autorizada.");
+  }
+  async function cashList(){
+    cashAuthorized();
+    var r=await CLIENT.from("hotel_cash_sessions").select("*").order("opened_at",{ascending:false}).limit(150);
+    if(r.error)throw r.error;return r.data||[];
+  }
+  async function cashOpen(data){
+    cashAuthorized();
+    if(writing||pending)throw new Error("Espere a sincronizar los movimientos antes de abrir caja.");
+    var r=await CLIENT.rpc("hotel_cash_open",{
+      p_operator:data.operator,p_counted:data.counted,p_note:data.note||""
+    });
+    if(r.error)throw r.error;
+    revision=Number(r.data.state_revision);
+    return r.data;
+  }
+  async function cashClose(data){
+    cashAuthorized();
+    if(writing||pending)throw new Error("Hay movimientos pendientes de sincronizar. Actualice antes de cerrar.");
+    var r=await CLIENT.rpc("hotel_cash_close",{
+      p_session_id:data.id,p_operator:data.operator,p_counted:data.counted,
+      p_next_float:data.nextFloat,p_cash_in:data.cashIn,p_transfer_in:data.transferIn,
+      p_change_given:data.changeGiven,p_other_out:data.otherOut,
+      p_expected_revision:revision,p_note:data.note||""
+    });
+    if(r.error)throw r.error;
+    revision=Number(r.data.state_revision);
+    return r.data;
+  }
+  cloudApp.cashApi={
+    list:cashList,open:cashOpen,close:cashClose,
+    revision:function(){return revision;},
+    busy:function(){return !!(writing||pending||disabled);}
+  };
   window.hotelCloud = cloudApp;
   var style = document.createElement("style");
   style.textContent = "html:not(.hotel-authorized) .app-shell{display:none!important}" +
@@ -282,9 +321,14 @@
         var adminScript=document.createElement("script");adminScript.src="./admin.js?v=0.28-gerencial";
         adminScript.onerror=function(){status("No se pudo cargar el módulo administrativo",true);};
         adminScript.onload=function(){
-          var script=document.createElement("script");script.src="./app.js?v=0.28-gerencial";
-          script.onerror=function(){status("No se pudo cargar la aplicación",true);};
-          document.body.appendChild(script);
+          var cashScript=document.createElement("script");cashScript.src="./cash.js?v=0.29-apertura";
+          cashScript.onerror=function(){status("No se pudo cargar el control de apertura y cierre de caja",true);};
+          cashScript.onload=function(){
+            var script=document.createElement("script");script.src="./app.js?v=0.29-apertura";
+            script.onerror=function(){status("No se pudo cargar la aplicación",true);};
+            document.body.appendChild(script);
+          };
+          document.body.appendChild(cashScript);
         };
         document.body.appendChild(adminScript);
       }
@@ -401,6 +445,7 @@
       revision=Number(state.revision);
       baseGuests=new Map(allGuests.map(function(g){return [g.id,guestSig(g)];}));
       uiCallbacks.replace(Object.assign({},state.data,{guests:allGuests}));
+      if(window.hotelCash?.state.loaded)window.hotelCash.refresh();
       status("Actualizado desde otro equipo");
     }catch(err){
       status("Sin conexión · reintentar",true);

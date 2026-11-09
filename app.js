@@ -372,9 +372,10 @@
     const views={inicio:renderDashboard,habitaciones:renderRooms,ingreso:renderCheckin,reservas:renderReservations,salidas:renderCheckout,varios:renderExtras,inventario:renderStock,facturas:renderInvoices,caja:renderCash,huespedes:renderGuests,configuracion:renderSettings,gerencia:()=>window.hotelAdmin?.render('gerencia',db)||'',estadisticas:()=>window.hotelAdmin?.render('estadisticas',db)||'',finanzas:()=>window.hotelAdmin?.render('finanzas',db)||'',colaboradores:()=>window.hotelAdmin?.render('colaboradores',db)||'',nomina:()=>window.hotelAdmin?.render('nomina',db)||'',auditoria:()=>window.hotelAdmin?.render('auditoria',db)||''};
     document.getElementById('app-view').innerHTML=(views[ui.view]||renderDashboard)()+`<div class="footer-note">Hotel Unicornio · Puerto Francisco de Orellana · ${window.hotelCloud?.ready?'Versión beta sincronizada con Supabase':'Prototipo local'}</div>`;
     window.hotelAdmin?.bind(render);
+    window.hotelCash?.bind(render);
     updatePricing();
   }
-  function navigate(view){if(view!=='reservas')ui.reservationGuestSearchOpen=false;if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
+  function navigate(view){if(view==='caja')window.hotelCash?.refresh();if(view!=='reservas')ui.reservationGuestSearchOpen=false;if(view!=='varios')ui.extraTarget='caja';ui.view=view;document.getElementById('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'instant'});render();}
   function renderDashboard(){
     const available=db.rooms.filter(x=>x.status==='disponible').length,occ=db.rooms.filter(x=>x.status==='ocupada').length,dirty=db.rooms.filter(x=>x.status==='limpieza').length;
     const arrivals=db.reservations.filter(x=>x.arrival===today()&&['pendiente','confirmada'].includes(x.status));
@@ -1793,6 +1794,56 @@
     for(const e of db.extras)if(paidDirect(e)&&same(e.createdAt,e.shift))items.push({group:e.category==='helados'?'Helados':e.category==='otros'?'Adicionales / servicios':'Varios',method:e.method,amount:e.method==='efectivo'?Number(e.cashTendered??e.price*e.quantity):e.price*e.quantity,credited:asMoney(e.price*e.quantity),concept:e.productName});
     return items;
   }
+
+  // Totales de la sesión real: usa intervalos UTC, no fecha de calendario.
+  // Esto incluye los cobros de la madrugada en el turno nocturno anterior.
+  function cashSessionTotals(session){
+    const from=Date.parse(session.opened_at);
+    const until=session.closed_at?Date.parse(session.closed_at):Date.now()+1000;
+    const inSession=stamp=>{
+      const instant=Date.parse(String(stamp||''));
+      return Number.isFinite(from)&&Number.isFinite(instant)&&instant>=from&&instant<until;
+    };
+    const items=[];
+    for(const b of db.reservations){
+      if(Number(b.advance)>0&&inSession(b.createdAt)){
+        const method=b.advanceMethod||'efectivo';
+        items.push({group:'Hotel (anticipos)',method,amount:method==='efectivo'?Number(b.cashTendered??b.advance):Number(b.advance),concept:'Anticipo de reserva'});
+      }
+    }
+    for(const stay of db.stays){
+      for(const p of stay.payments||[]){
+        if(!inSession(p.createdAt))continue;
+        const method=p.method;
+        items.push({group:'Hotel (cobros de estadía)',method,
+          amount:method==='efectivo'?Number(p.cashTendered??p.amount):Number(p.amount),
+          concept:'Hab. '+(roomOf(stay.roomId)?.number||'—')});
+      }
+    }
+    for(const e of db.extras){
+      if(!paidDirect(e)||!inSession(e.createdAt))continue;
+      const method=e.method;
+      items.push({group:e.category==='helados'?'Helados':e.category==='otros'?'Adicionales / servicios':'Varios',
+        method,amount:method==='efectivo'?Number(e.cashTendered??e.price*e.quantity):Number(e.price*e.quantity),concept:e.productName});
+    }
+    const changeGiven=asMoney(changeMovements().filter(x=>x.owner.changeStatus==='dado'&&
+      inSession(x.owner.changeDeliveredAt)).reduce((n,x)=>n+Number(x.owner.cashChange||0),0));
+    const otherOut=asMoney(db.cashMovements.filter(m=>inSession(m.createdAt)).reduce((n,m)=>n+Number(m.amount||0),0));
+    const total=method=>asMoney(items.filter(i=>i.method===method).reduce((n,i)=>n+Number(i.amount||0),0));
+    return {items,cash:total('efectivo'),transfer:total('transferencia'),changeGiven,otherOut,
+      out:asMoney(changeGiven+otherOut),
+      groups:['Hotel (anticipos)','Hotel (cobros de estadía)','Varios','Helados','Adicionales / servicios']
+        .map(label=>({label,
+          efectivo:asMoney(items.filter(i=>i.group===label&&i.method==='efectivo').reduce((n,i)=>n+Number(i.amount||0),0)),
+          transferencia:asMoney(items.filter(i=>i.group===label&&i.method==='transferencia').reduce((n,i)=>n+Number(i.amount||0),0))}))};
+  }
+  function cashSessionAllowed(){
+    if(!window.hotelCash||window.hotelCash.canOperate())return true;
+    const session=window.hotelCash.active?.();
+    toast(session?'El turno anterior sigue abierto o no coincide con el horario actual. Cierre la caja antes de cobrar.':
+      'La caja está cerrada. Abra la caja y registre el fondo de cambio antes de cobrar.','error');
+    return false;
+  }
   function cashTotals(date,shift){
     const items=cashItems(date,shift),otherOut=db.cashMovements.filter(m=>m.date===date&&m.shift===shift).reduce((sum,m)=>sum+Number(m.amount),0);
     const changeGiven=asMoney(changeMovements().filter(x=>x.owner.changeStatus==='dado'&&x.owner.changeDeliveredAt&&localDateOf(x.owner.changeDeliveredAt)===date&&(x.owner.changeDeliveredShift||x.owner.shift||'dia')===shift).reduce((sum,x)=>sum+Number(x.owner.cashChange||0),0));
@@ -1802,6 +1853,10 @@
     return {items,groups,cash:total('efectivo'),transfer:total('transferencia'),out:asMoney(otherOut+changeGiven),otherOut:asMoney(otherOut),changeGiven,changePendingTotal};
   }
   function renderCash(){
+    if(window.hotelCash)return window.hotelCash.render(db,{
+      head,btn,field,select,esc,asMoney,money,datePretty,
+      sessionTotals:cashSessionTotals,changeMovements,changePending
+    });
     const date=ui.cashDate||today(),shift=ui.cashShift||'dia',sum=cashTotals(date,shift),prev=db.closures.find(c=>c.date===date&&c.shift===shift);
     const charged=db.extras.filter(e=>Boolean(e.stayId)&&localDateOf(e.createdAt)===date&&(e.shift||'dia')===shift);
     const peopleCharged=db.stays.flatMap(stay=>(stay.additionalPeople||[]).filter(p=>localDateOf(p.createdAt)===date&&(p.shift||'dia')===shift));
@@ -2009,6 +2064,7 @@
   if(!checked.valid){toast(checked.error,'error');return;}
   const plan=prepareCheckinGroup(f,b);
   if(plan.error){toast(plan.error,'error');refreshRoomSelect('ingreso');return;}
+  if(Number(plan.payment||0)>0&&!cashSessionAllowed())return;
   if(f.invoice==='si'){
     if(f.invoiceSameData==='si')Object.assign(f,sameGuestInvoiceData(f));
     if(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim()){
@@ -2099,6 +2155,7 @@
     if(f.roomId&&(!roomOf(f.roomId)||!roomCompatible(roomOf(f.roomId),f.type)||!availableForBooking(roomOf(f.roomId),f.arrival,f.departure))){toast('La habitación escogida no está libre durante esas fechas.','error');refreshRoomSelect('reservas');return;}
     if(rate(f.type,f.breakfast)===null){toast('Configure la tarifa con desayuno antes de reservar ese tipo.','error');return;}
     const total=asMoney(n*rate(f.type,f.breakfast));
+    if(advance>0&&!cashSessionAllowed())return;
     if(advance>0&&f.advanceMethod==='transferencia'&&!String(f.advanceRef||'').trim()){toast('Ingrese referencia de la transferencia del anticipo.','error');return;}
     if(!Number.isFinite(advance)||advance<0||advance>total){toast('El anticipo no puede ser negativo ni superar el total.','error');return;}
     const tender=resolveTendered(f.cashTendered,f.advanceMethod,advance,f.changeStatus);if(tender.error){toast(tender.error,'error');return;}
@@ -2114,6 +2171,7 @@
     const found=Boolean(getGuestByDocument(g.document));saveGuest(g);persist();ui.lookup.huespedes=g.document;ui.lookupMessage.huespedes=found?'Datos del huésped actualizados.':'Nuevo huésped registrado.';ui.lookupResult.huespedes=true;render();toast(found?'Ficha del huésped actualizada. Sincronizando...':'Huésped añadido. Sincronizando con Supabase...');
   }
   function processPayment(){
+    if(!cashSessionAllowed())return;
     const f=readForm('payment-form'),stay=stayOf(f.stayId);
     if(!stay||stay.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
     if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione un método de pago válido.','error');return;}
@@ -2141,6 +2199,7 @@
   function appendExtra(f,product){
     const q=Number(f.quantity),stayId=f.stayId==='caja'?'':f.stayId,stay=stayOf(stayId);
     if(stayId&&(!stay||stay.status!=='activa')){toast('Debe seleccionar una habitación ocupada.','error');return false;}
+    if(!stayId&&!cashSessionAllowed())return false;
     if(!Number.isInteger(q)||q<1||q>1000){toast('Cantidad inválida.','error');return false;}
     if(product?.price===null||!Number.isFinite(Number(product?.price))||Number(product.price)<=0){toast('Este artículo no tiene tarifa definida; configúrela o utilice el formulario de cobro adicional.','error');return false;}
     if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione forma de pago válida.','error');return false;}
@@ -2167,6 +2226,7 @@
     const f=readForm('manual-extra-form'),name=String(f.name||'').trim(),amount=Number(f.amount),stayId=f.stayId==='caja'?'':f.stayId;
     if(!name||name.length>80||!Number.isFinite(amount)||amount<=0||amount>100000){toast('Complete un concepto y un importe válido.','error');return;}
     if(stayId&&stayOf(stayId)?.status!=='activa'){toast('Seleccione una habitación ocupada.','error');return;}
+    if(!stayId&&!cashSessionAllowed())return;
     if(!stayId&&f.method==='transferencia'&&!String(f.reference||'').trim()){toast('La transferencia necesita referencia.','error');return;}
     const tender=stayId?{received:asMoney(amount),change:0,status:'no_aplica'}:resolveTendered(f.cashTendered,f.method,amount,f.changeStatus);
     if(tender.error){toast(tender.error,'error');return;}
@@ -2252,6 +2312,7 @@
   if(paidOf(stay)>totalOf(stay)+0.001){toast('La cuenta tiene un pago excedente. Requiere conciliación antes de cerrar.','error');return;}
   let tender=null;
   if(due>0){
+    if(!cashSessionAllowed())return;
     if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione un método de pago final.','error');return;}
     if(f.method==='transferencia'&&!String(f.reference||'').trim()){toast('Ingrese la referencia de transferencia antes de cerrar.','error');return;}
     if(f.method==='efectivo'&&String(f.cashTendered??'').trim()===''){toast('Ingrese el efectivo recibido antes del cierre.','error');return;}
@@ -2324,9 +2385,11 @@
       ' · Bodega '+stockDescription(locationStock(p,'bodega'))+'.');
   }
   function processCashOut(){
+    if(!cashSessionAllowed())return;
     const f=readForm('cash-out-form'),amount=Number(f.amount);
     if(!Number.isFinite(amount)||amount<=0||amount>100000||!String(f.note||'').trim()){toast('Indique el motivo y un importe positivo.','error');return;}
-    db.cashMovements.push({id:uid('cashout'),date:ui.cashDate||today(),shift:ui.cashShift||'dia',kind:f.kind==='retiro'?'retiro':'gasto',amount:asMoney(amount),operator:String(f.operator||'').trim(),note:f.note.trim(),createdAt:new Date().toISOString()});
+    const activeCash=window.hotelCash?.active?.();
+    db.cashMovements.push({id:uid('cashout'),date:activeCash?.shift_date||ui.cashDate||today(),shift:activeCash?.shift||ui.cashShift||'dia',kind:f.kind==='retiro'?'retiro':'gasto',amount:asMoney(amount),operator:String(f.operator||'').trim(),note:f.note.trim(),createdAt:new Date().toISOString()});
     persist();render();toast('Salida de efectivo registrada.');
   }
   function processCashClose(){
@@ -2540,10 +2603,11 @@
         ui.selectedHistoryStayId=null;render();break;
       case 'export-stay-history':exportStayHistory(id);break;
       case 'settle-change':{
+        if(!cashSessionAllowed())break;
         const r=changeMovements().find(x=>x.source===el.dataset.source&&x.id===id);
         if(!r||r.owner.changeStatus!=='pendiente'){toast('El vuelto ya no está pendiente.','error');break;}
         if(!window.confirm('¿Confirma que entregó físicamente '+money(r.owner.cashChange)+' de vuelto? Se descontará de la caja del turno actual.'))break;
-        r.owner.changeStatus='dado';r.owner.changeDeliveredAt=new Date().toISOString();r.owner.changeDeliveredShift=ui.cashShift||'dia';
+        r.owner.changeStatus='dado';r.owner.changeDeliveredAt=new Date().toISOString();r.owner.changeDeliveredShift=window.hotelCash?.active?.()?.shift||ui.cashShift||'dia';
         persist();render();toast('Vuelto entregado: '+money(r.owner.cashChange)+'. La salida se registró en caja.');break;
       }
       case 'start-room-checkin':{

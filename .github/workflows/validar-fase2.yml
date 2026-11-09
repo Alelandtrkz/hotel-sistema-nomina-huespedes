@@ -23,6 +23,7 @@ jobs:
         run: |
           node --check app.js
           node --check cloud.js
+          node --check cash.js
       - name: Probar vuelto y caja (fase 1)
         run: node tests/fase1.test.cjs
       - name: Probar cuenta, cargos, ampliación, cierre e historial (fase 2)
@@ -60,3 +61,6 @@ jobs:
 
       - name: Validar seguridad y estadísticas del panel gerencial
         run: node tests/admin-gerencial-v028.test.cjs
+
+      - name: Probar apertura, arqueo, traspaso y cierre por turnos
+        run: node tests/caja-apertura-handover-v029.test.cjs
