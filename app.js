@@ -295,7 +295,7 @@
     const form=document.getElementById('payment-form');if(!form)return;
     const data=readForm('payment-form'),stay=stayOf(data.stayId);
     if(!stay)return;
-    const input=form.querySelector('[name=amount]'),quote=checkoutAbonoQuote(dueOf(stay),input?.value??data.amount);
+    const input=form.querySelector?.('[name=amount]'),quote=checkoutAbonoQuote(dueOf(stay),input?.value??data.amount);
     const note=document.getElementById('payment-amount-warning');
     if(quote.exceeds&&input){
       input.value=quote.applied.toFixed(2);
