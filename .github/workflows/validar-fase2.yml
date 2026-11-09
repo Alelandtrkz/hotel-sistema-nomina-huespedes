@@ -53,3 +53,5 @@ jobs:
         run: node tests/salidas-abonos-cierre-v024.test.cjs
       - name: Validar límite de abono y vuelto sobre efectivo recibido
         run: node tests/abono-vuelto-maximo-v025.test.cjs
+      - name: Verificar saldo fijo a cobrar y abonos sin campo duplicado
+        run: node tests/saldo-fijo-abono-v026.test.cjs

@@ -1,3 +1,17 @@
+# Hotel Unicornio v0.26 — Valor a cobrar igual al saldo pendiente, sin campo de valor del abono
+
+A solicitud de recepción, se elimina el campo **Valor del abono (USD)** en **Salidas y cobros → Abono a la cuenta pendiente**. Ahora **Valor a cobrar** es el importe exacto pendiente de la habitación, calculado con `dueOf(stay)` y nunca editable desde el formulario.
+
+**Efectivo:** el recepcionista indica únicamente cuánto dinero entregó físicamente el huésped. El sistema registra automáticamente el menor entre efectivo recibido y saldo pendiente como pago a la cuenta. Si el huésped entrega menos, es un **abono parcial** sin vuelto y el resto queda por cobrar. Si entrega más, registra la deuda completa como cobrada y exige indicar qué ocurrió con el **vuelto**. El saldo restante se muestra en tiempo real. No se marca salida al registrar el pago.
+
+**Transferencia:** al seleccionar transferencia se muestra **Monto transferido (USD)** y **Código de transferencia**. Se registra exactamente lo transferido hasta la deuda pendiente; se permiten transferencias parciales, sin vuelto, y se rechazan transferencias mayores que el saldo (se requiere conciliación).
+
+**Ejemplo:** saldo pendiente **$3,25**; efectivo entregado **$20,00**; valor a cobrar **$3,25**; vuelto **$16,75**; saldo después del pago **$0,00**. Si entrega **$2,00**, se registra un pago de $2,00, sin vuelto, y quedan $1,25 pendientes.
+
+No se modifica la lógica del **Cierre de cuenta y registrar salida**, la base de datos de Supabase, los pagos anteriores ni las tarifas. Se mantienen las validaciones de efectivo y las decisiones de vuelto dado/pendiente. Se adaptan las suites v0.24 y v0.25 a la interfaz renovada y se añade la suite `tests/saldo-fijo-abono-v026.test.cjs` con el caso concreto del recepcionista. Se ejecutan todas antes de desplegar Pages.
+
+---
+
 # Hotel Unicornio v0.25 — Abono superior a deuda y cálculo de vuelto
 
 ## Situación resuelta

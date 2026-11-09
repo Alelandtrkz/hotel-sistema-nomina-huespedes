@@ -21,7 +21,7 @@ const t=window.__v25;
 let failed=0;
 function test(title,fn){try{fn();console.log('PASS',title)}catch(e){failed++;console.error('FAIL',title,e.stack||e)}}
 function cl(){const vals=new Set(['hidden']);return {contains:k=>vals.has(k),remove:k=>vals.delete(k),add:k=>vals.add(k),toggle(k,v){if(v)vals.add(k);else vals.delete(k)}}}
-function setup({amount='20',cash='20',method='efectivo'}={}){
+function setup({cash='20',method='efectivo',transferAmount=''}={}){
  for(const k of Object.keys(nodes))if(!['toasts','app-view','breadcrumb','sidebar','year','current-date'].includes(k))delete nodes[k];
  const db=t.defaults(),room=db.rooms.find(r=>r.id==='room-01');
  room.status='ocupada';const stay={id:'test-abono',guestId:'gtest',roomId:room.id,
@@ -30,7 +30,7 @@ function setup({amount='20',cash='20',method='efectivo'}={}){
  db.stays=[stay];db.guests=[{id:'gtest',firstName:'HUÉSPED',lastName:'PRUEBA'}];
  t.setDB(db);t.setUI({...t.getUI(),view:'salidas',selectedStayId:stay.id});
  const fields={
-  stayId:{value:stay.id},amount:{value:amount},cashTendered:{value:cash},method:{value:method},shift:{value:'dia'},
+  stayId:{value:stay.id},transferAmount:{value:transferAmount},cashTendered:{value:cash},method:{value:method},shift:{value:'dia'},
   changeStatus:{value:'dado'},reference:{value:''}
  };
  const form={
@@ -46,68 +46,70 @@ function setup({amount='20',cash='20',method='efectivo'}={}){
  messages.length=0;
  return {db,room,stay,form,fields};
 }
-test('Saldo de 10,07 y solicitud de 20: solo 10,07 se aplica',()=>{
- const q=t.checkoutAbonoQuote(10.07,20);
- assert.equal(q.applied,10.07);assert.equal(q.remaining,0);assert.equal(q.exceeds,true);
+test('Monto pendiente es siempre lo que aparece como Valor a cobrar, sin cuadro de abono',()=>{
+ const {stay}=setup();const html=t.renderPaymentForm(stay);
+ assert(!html.includes('id="payment-amount"'));
+ assert(!html.includes('Valor del abono (USD)'));
+ assert(html.includes('Valor a cobrar'));
+ assert(html.includes('$10,07'));
 });
-test('Un abono parcial de 5,00 deja saldo de 5,07',()=>{
+test('Con saldo 10,07 y 20 entregados se aplican 10,07 y se devuelve 9,93',()=>{
+ const quote=t.checkoutAbonoQuote(10.07,20);
+ assert.equal(quote.due,10.07);
+ assert.equal(quote.applied,10.07);
+ assert.equal(quote.received,20);
+ assert.equal(quote.change,9.93);
+ assert.equal(quote.remaining,0);
+ assert(quote.exceeds);
+});
+test('Con 5 entregados se registra un abono parcial sin cambio',()=>{
  const q=t.checkoutAbonoQuote(10.07,5);
- assert.equal(q.applied,5);assert.equal(q.remaining,5.07);assert.equal(q.exceeds,false);
+ assert.equal(q.applied,5);assert.equal(q.change,0);assert.equal(q.remaining,5.07);
 });
-test('No se inventa un abono cuando no hay importe ingresado',()=>{
+test('Con importe no indicado se muestra la deuda original y no se aplica pago',()=>{
  const q=t.checkoutAbonoQuote(10.07,'');
- assert.equal(q.applied,0);assert.equal(q.remaining,10.07);
+ assert.equal(q.applied,0);assert.equal(q.remaining,10.07);assert(q.missing);
 });
-test('20 de abono solicitado con saldo 10,07 se normaliza a 10,07 y vuelto 9,93',()=>{
- const {fields}=setup();
- t.updateCheckoutAbonoPreview();
- assert.equal(fields.amount.value,'10.07');
+test('La vista previa para 20 en efectivo no modifica otro campo, muestra vuelto y saldo cero',()=>{
+ setup();t.updateCheckoutAbonoPreview();
  assert.equal(nodes['payment-amount-preview'].textContent,'$10,07');
  assert.equal(nodes['payment-change-preview'].textContent,'$9,93');
  assert.equal(nodes['payment-remaining-preview'].textContent,'$0,00');
- assert(nodes['payment-amount-warning'].textContent.includes('Se ajustó'));
- assert(!nodes['payment-amount-warning'].classList.contains('hidden'));
 });
-test('El abono normalizado se registra a 10,07 sin duplicar el efectivo recibido',()=>{
- const {stay,room,fields}=setup();
- t.updateCheckoutAbonoPreview();t.processPayment();
+test('Se registra el pago completo sin cerrar habitación',()=>{
+ const {stay,room}=setup();t.updateCheckoutAbonoPreview();t.processPayment();
  assert.equal(stay.payments.length,1);
  assert.equal(stay.payments[0].amount,10.07);
  assert.equal(stay.payments[0].cashTendered,20);
  assert.equal(stay.payments[0].cashChange,9.93);
- assert.equal(t.dueOf(stay),0);
- assert.equal(stay.status,'activa');
- assert.equal(room.status,'ocupada');
+ assert.equal(t.dueOf(stay),0);assert.equal(stay.status,'activa');assert.equal(room.status,'ocupada');
 });
-test('Un abono de 5 y efectivo de 20 devuelve 15 y deja deuda de 5,07',()=>{
- const {stay}=setup({amount:'5',cash:'20'});
+test('Se registra abono parcial si el efectivo entregado es inferior al saldo',()=>{
+ const {stay}=setup({cash:'5'});
  t.updateCheckoutAbonoPreview();
- assert.equal(nodes['payment-amount-preview'].textContent,'$5,00');
- assert.equal(nodes['payment-change-preview'].textContent,'$15,00');
+ assert.equal(nodes['payment-amount-preview'].textContent,'$10,07');
+ assert.equal(nodes['payment-change-preview'].textContent,'$0,00');
  assert.equal(nodes['payment-remaining-preview'].textContent,'$5,07');
  t.processPayment();assert.equal(t.dueOf(stay),5.07);
- assert.equal(stay.payments[0].cashChange,15);
+ assert.equal(stay.payments[0].amount,5);assert.equal(stay.payments[0].cashChange,0);
 });
-test('Si no se especifica efectivo recibido, no se muestra vuelto 0 engañoso',()=>{
- setup({amount:'10.07',cash:''});
+test('Sin efectivo introducido no presupone un pago ni muestra vuelto 0',()=>{
+ const {stay}=setup({cash:''});
  t.updateCheckoutAbonoPreview();
  assert.equal(nodes['payment-change-preview'].textContent,'—');
+ t.processPayment();assert.equal(stay.payments.length,0);
 });
-test('Si el dinero recibido es inferior al abono, advertir insuficiencia',()=>{
- setup({amount:'10.07',cash:'5'});
- t.updateCheckoutAbonoPreview();
- assert.equal(nodes['payment-change-preview'].textContent,'Efectivo insuficiente');
+test('Rechaza importes con más de dos decimales y transferencias superiores a saldo',()=>{
+ const {stay,fields}=setup({cash:'3.251'});
+ t.processPayment();assert.equal(stay.payments.length,0);
+ fields.method.value='transferencia';fields.transferAmount.value='15';fields.reference.value='REF-EXCESO';
+ t.processPayment();assert.equal(stay.payments.length,0);
 });
-test('Sin previsualización, el servidor de formulario sigue rechazando abonos superiores al saldo',()=>{
- const {stay}=setup({amount:'20',cash:'20'});
- t.processPayment();
- assert.equal(stay.payments.length,0);
- assert(messages.some(m=>m.includes('no superar el saldo')));
-});
-test('Cierre de cuenta sigue siendo independiente y se cobra solo saldo existente',()=>{
- const {stay}=setup({amount:'3',cash:'3'});
- t.processPayment();
- assert.equal(t.dueOf(stay),7.07);
- assert(t.renderFinalAccountSection(stay).includes('7,07'));
+test('Una transferencia parcial de 3 y sin vuelto deja 7,07 por cobrar',()=>{
+ const {stay}=setup({cash:'',method:'transferencia',transferAmount:'3'});
+ nodes['payment-form'].fields.reference.value='TRANSFER-OK';
+ t.processPayment();assert.equal(stay.payments.length,1);
+ assert.equal(stay.payments[0].amount,3);assert.equal(stay.payments[0].cashChange,0);
+ assert.equal(t.dueOf(stay),7.07);assert(t.renderFinalAccountSection(stay).includes('7,07'));
 });
 if(failed)process.exitCode=1;

@@ -63,13 +63,15 @@ test('En ambas operaciones aparece Valor a cobrar, Efectivo recibido y Vuelto ca
  }
  assert(!api.cashChangeFields('checkin').includes('id="checkin-amount-preview"'));
 });
-test('El abono empieza vacío para evitar cobro total accidental',()=>{
+test('Saldo fijo sin campo de abono; el efectivo recibido define el importe aplicado',()=>{
  const {stay}=base();
  const html=api.renderPaymentForm(stay);
- assert(html.includes('id="payment-amount"'));
- assert(html.includes('placeholder="Ej. 5.00"'));
- assert(html.includes('value=""'));
- assert(html.includes('Registrar pago parcial'));
+ assert(!html.includes('id="payment-amount"'));
+ assert(!html.includes('Valor del abono (USD)'));
+ assert(html.includes('Valor a cobrar'));
+ assert(html.includes('$10,07'));
+ assert(html.includes('Efectivo entregado por el huésped'));
+ assert(html.includes('Registrar pago sin cerrar cuenta'));
  assert(html.includes('sin marcar la salida'));
 });
 test('El vuelto se calcula contra el abono y muestra el valor a cobrar en vivo',()=>{
@@ -87,11 +89,11 @@ test('El vuelto se calcula contra el abono y muestra el valor a cobrar en vivo',
 });
 test('Abono de 3,01 a una cuenta de 10,07 deja saldo 7,06 y no libera habitación',()=>{
  const {stay,room}=base();
- feed('payment-form',{stayId:stay.id,method:'efectivo',shift:'dia',amount:'3.01',cashTendered:'5',changeStatus:'dado'});
+ feed('payment-form',{stayId:stay.id,method:'efectivo',shift:'dia',cashTendered:'3.01'});
  api.processPayment();
  assert.equal(stay.payments.length,1);
  assert.equal(stay.payments[0].amount,3.01);
- assert.equal(stay.payments[0].cashChange,1.99);
+ assert.equal(stay.payments[0].cashChange,0);
  assert.equal(api.dueOf(stay),7.06);
  assert.equal(stay.status,'activa');
  assert.equal(room.status,'ocupada');
@@ -110,19 +112,23 @@ test('Cierre cobra únicamente el saldo tras el abono y manda habitación a limp
  assert.equal(api.dueOf(stay),0);
  assert(confirmed.some(text=>text.includes('Se cobrará')));
 });
-test('No permite abonar por encima del saldo, ni cobros en efectivo sin registrar lo recibido',()=>{
+test('No registra pagos sin efectivo, ni efectivo con vuelto sin confirmar si fue entregado',()=>{
  const {stay}=base();
- feed('payment-form',{stayId:stay.id,method:'efectivo',amount:'11',cashTendered:'11'});
+ feed('payment-form',{stayId:stay.id,method:'efectivo',cashTendered:'20'});
  api.processPayment();assert.equal(stay.payments.length,0);
- feed('payment-form',{stayId:stay.id,method:'efectivo',amount:'4',cashTendered:''});
+ feed('payment-form',{stayId:stay.id,method:'efectivo',cashTendered:''});
  api.processPayment();assert.equal(stay.payments.length,0);
  assert(notes.some(m=>m.includes('efectivo recibido')));
+ feed('payment-form',{stayId:stay.id,method:'efectivo',cashTendered:'20',changeStatus:'dado'});
+ api.processPayment();assert.equal(stay.payments.length,1);
+ assert.equal(stay.payments[0].amount,10.07);
+ assert.equal(stay.payments[0].cashChange,9.93);
 });
 test('Los abonos por transferencia requieren código y dejan trazabilidad',()=>{
  const {stay,room}=base();
- feed('payment-form',{stayId:stay.id,method:'transferencia',amount:'4',shift:'noche',reference:''});
+ feed('payment-form',{stayId:stay.id,method:'transferencia',transferAmount:'4',shift:'noche',reference:''});
  api.processPayment();assert.equal(stay.payments.length,0);
- feed('payment-form',{stayId:stay.id,method:'transferencia',amount:'4',shift:'noche',reference:'REF-PRUEBA'});
+ feed('payment-form',{stayId:stay.id,method:'transferencia',transferAmount:'4',shift:'noche',reference:'REF-PRUEBA'});
  api.processPayment();
  assert.equal(stay.payments.length,1);
  assert.equal(stay.payments[0].reference,'REF-PRUEBA');
@@ -131,7 +137,7 @@ test('Los abonos por transferencia requieren código y dejan trazabilidad',()=>{
 });
 test('Si toda la cuenta fue abonada, el cierre no vuelve a cobrar dinero',()=>{
  const {stay,room}=base();
- feed('payment-form',{stayId:stay.id,method:'efectivo',amount:'10.07',shift:'dia',cashTendered:'10.07'});
+ feed('payment-form',{stayId:stay.id,method:'efectivo',shift:'dia',cashTendered:'10.07'});
  api.processPayment();
  assert.equal(api.dueOf(stay),0);
  const html=api.renderFinalAccountSection(stay);

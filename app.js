@@ -271,42 +271,50 @@
     const raw=String(form.querySelector?.('[name=cashTendered]')?.value??readForm(formId).cashTendered??'').trim();
     const needsExplicitCash=(prefix==='payment'||prefix==='final')&&show;
     const tendered=raw===''?(needsExplicitCash?NaN:Number(amount)):Number(raw);
-    const change=Number.isFinite(tendered)?asMoney(tendered-Number(amount)):0;
+    const change=Number.isFinite(tendered)?asMoney(Math.max(0,tendered-Number(amount))):0;
+    const partial=prefix==='payment'&&Number.isFinite(tendered)&&tendered<Number(amount);
     const preview=document.getElementById(prefix+'-change-preview');
     if(preview){
-      preview.textContent=raw===''&&needsExplicitCash?'—':!Number.isFinite(tendered)?'Revise el importe':change<0?'Efectivo insuficiente':money(change);
-      preview.classList.toggle('text-red',Number.isFinite(tendered)&&change<0);
+      preview.textContent=raw===''&&needsExplicitCash?'—':!Number.isFinite(tendered)?'Revise el importe':!partial&&tendered<Number(amount)?'Efectivo insuficiente':money(change);
+      preview.classList.toggle('text-red',Number.isFinite(tendered)&&!partial&&tendered<Number(amount));
     }
     document.getElementById(prefix+'-change-choice')?.classList.toggle('hidden',!show||!Number.isFinite(tendered)||change<=0);
   }
-  // Nunca se puede aplicar a una cuenta un importe superior a su saldo.
-  // Una entrega en efectivo superior es válida, pero el excedente es vuelto.
-  function checkoutAbonoQuote(saldo,requested){
+
+  // Una sola fuente: el importe que se debe cobrar es SIEMPRE el saldo vigente.
+  // Sin campo de 'valor del abono': el dinero recibido determina cuánto se abona.
+  function checkoutAbonoQuote(saldo,receivedValue,method='efectivo'){
     const due=asMoney(Math.max(0,Number(saldo)||0));
-    const raw=String(requested??'').trim();
-    const parsed=raw===''?0:Number(raw);
-    if(!Number.isFinite(parsed)||parsed<0)return {due,applied:0,remaining:due,exceeds:false,invalid:raw!==''};
-    const amount=asMoney(parsed);
-    const exceeds=amount>due;
-    const applied=Math.min(due,Math.max(0,amount));
-    return {due,applied,remaining:asMoney(due-applied),exceeds,invalid:false};
+    const raw=String(receivedValue??'').trim();
+    if(raw==='')return {due,applied:0,received:0,change:0,remaining:due,missing:true,invalid:false,exceeds:false};
+    if(!/^\d+(?:\.\d{1,2})?$/.test(raw))return {due,applied:0,received:0,change:0,remaining:due,missing:false,invalid:true,exceeds:false};
+    const parsed=Number(raw),cents=moneyCents(parsed);
+    if(!Number.isSafeInteger(cents)||cents<=0||!Number.isFinite(parsed))
+      return {due,applied:0,received:0,change:0,remaining:due,missing:false,invalid:true,exceeds:false};
+    const received=asMoney(cents/100),exceeds=received>due;
+    const applied=asMoney(Math.min(due,received));
+    const change=method==='efectivo'?asMoney(Math.max(0,received-applied)):0;
+    return {due,applied,received,change,remaining:asMoney(due-applied),missing:false,invalid:false,exceeds};
   }
   function updateCheckoutAbonoPreview(){
     const form=document.getElementById('payment-form');if(!form)return;
     const data=readForm('payment-form'),stay=stayOf(data.stayId);
     if(!stay)return;
-    const input=form.querySelector?.('[name=amount]'),quote=checkoutAbonoQuote(dueOf(stay),input?.value??data.amount);
-    const note=document.getElementById('payment-amount-warning');
-    if(quote.exceeds&&input){
-      input.value=quote.applied.toFixed(2);
-      if(note){
-        note.textContent='El abono no puede superar '+money(quote.due)+'. Se ajustó a ese saldo; si el huésped entrega más efectivo, el excedente se devuelve como vuelto.';
-        note.classList.remove('hidden');
-      }
-    }else if(note){note.classList.add('hidden');note.textContent='';}
+    const isTransfer=data.method==='transferencia';
+    const quote=checkoutAbonoQuote(dueOf(stay),isTransfer?data.transferAmount:data.cashTendered,data.method);
     const remaining=document.getElementById('payment-remaining-preview');
     if(remaining)remaining.textContent=money(quote.remaining);
-    updateCashPreview('payment-form','payment',quote.applied,data.method);
+    const amountPreview=document.getElementById('payment-amount-preview');
+    if(amountPreview)amountPreview.textContent=money(quote.due);
+    const warning=document.getElementById('payment-partial-hint');
+    if(warning){
+      warning.textContent=quote.missing?'Introduzca el importe recibido para calcular el pago.':
+        quote.invalid?'Introduzca un importe válido con máximo dos decimales.':
+        isTransfer&&quote.exceeds?'El monto transferido supera el saldo pendiente. Revise la transferencia.':
+        quote.applied<quote.due?'Se abonarán '+money(quote.applied)+' y quedarán '+money(quote.remaining)+' pendientes.':
+        'La cuenta quedará pagada. La habitación seguirá ocupada hasta registrar la salida.';
+    }
+    updateCashPreview('payment-form','payment',quote.due,data.method);
   }
   const readForm=id=>{const e=document.getElementById(id);return e?Object.fromEntries(new FormData(e).entries()):{};};
   const validDoc=s=>checkEcuadorDocument(s).valid; // Validación estructural y de dígito verificador, no prueba identidad real.
@@ -384,7 +392,7 @@
     const due=dueOf(stay);
     return `<details class="phase2-operation checkout-partial-payment" id="checkout-abono">
       <summary><span>Abono a la cuenta pendiente</span>
-        <small>Saldo actual: ${money(due)} · registrar un pago parcial sin marcar la salida</small>
+        <small>Saldo actual: ${money(due)} · pagar todo o abonar parcialmente sin marcar la salida</small>
       </summary>
       <div class="phase2-operation-body">
         <form id="payment-form">
@@ -394,18 +402,19 @@
             ${select('Método de pago','method',[['efectivo','Efectivo'],['transferencia','Transferencia']],'efectivo')}
             ${select('Turno','shift',[['dia','Día'],['noche','Noche']],'dia')}
           </div>
-          <div class="checkout-abono-entry">
-            ${field('Valor del abono (USD)','amount','',{id:'payment-amount',type:'number',min:0.01,max:due,step:'0.01',required:true,placeholder:'Ej. 5.00'})}
-            <small class="mini-caption">Máximo a abonar: <strong>${money(due)}</strong>. Si le entregan más efectivo, indique el importe recibido abajo para calcular el vuelto.</small>
-            <p id="payment-amount-warning" class="checkout-abono-warning hidden" role="status"></p>
-          </div>
-          ${cashChangeFields('payment',{},0)}
+          ${cashChangeFields('payment',{},due)}
+          <p class="mini-caption checkout-auto-payment-hint">El <strong>valor a cobrar</strong> es el saldo pendiente. Ingrese solamente el efectivo que entrega el huésped: si es menor, se registra como abono parcial; si es mayor, se calcula el vuelto.</p>
+          <p class="mini-caption checkout-payment-hint" id="payment-partial-hint" aria-live="polite">Ingrese el importe recibido para calcular el pago.</p>
           <div class="checkout-abono-remaining" aria-live="polite">
             <span>Saldo que quedará después del abono</span>
             <strong id="payment-remaining-preview">${money(due)}</strong>
           </div>
-          <div class="field hidden section-gap" id="payment-reference"><label for="reference">Código de transferencia *</label><input id="reference" name="reference" placeholder="Referencia bancaria"></div>
-          <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago parcial</button>
+          <div class="checkout-transfer-fields hidden section-gap" id="payment-reference">
+            ${field('Monto transferido (USD)','transferAmount','',{id:'payment-transfer-amount',type:'number',min:0.01,max:due,step:'0.01',placeholder:'Ingrese el importe recibido'})}
+            ${field('Código de transferencia','reference','',{id:'payment-transfer-reference',placeholder:'Referencia bancaria'})}
+            <p class="mini-caption">En transferencias se registra exactamente el importe recibido, hasta el saldo pendiente. No se genera vuelto.</p>
+          </div>
+          <button class="btn btn-primary section-gap" type="submit" ${due<=0?'disabled':''}>Registrar pago sin cerrar cuenta</button>
           <p class="mini-caption section-gap">El abono reduce el saldo de esta cuenta y queda registrado en caja, pero <strong>no cierra la estadía ni libera la habitación</strong>.</p>
           ${due<=0?'<p class="mini-caption">La cuenta no tiene saldo pendiente. Puede registrar la salida en la sección de cierre.</p>':''}
         </form>
@@ -2035,16 +2044,29 @@
     const found=Boolean(getGuestByDocument(g.document));saveGuest(g);persist();ui.lookup.huespedes=g.document;ui.lookupMessage.huespedes=found?'Datos del huésped actualizados.':'Nuevo huésped registrado.';ui.lookupResult.huespedes=true;render();toast(found?'Ficha del huésped actualizada. Sincronizando...':'Huésped añadido. Sincronizando con Supabase...');
   }
   function processPayment(){
-    const f=readForm('payment-form'),s=stayOf(f.stayId),amount=Number(f.amount);
-    if(!s||s.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
-    if(!Number.isFinite(amount)||!Number.isSafeInteger(Math.round(amount*100))||amount<=0||Math.round(amount*100)>Math.round(dueOf(s)*100)){toast('El abono debe ser mayor que cero y no superar el saldo pendiente.','error');return;}
+    const f=readForm('payment-form'),stay=stayOf(f.stayId);
+    if(!stay||stay.status!=='activa'){toast('Seleccione una estadía activa.','error');return;}
     if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione un método de pago válido.','error');return;}
-    if(f.method==='efectivo'&&String(f.cashTendered??'').trim()===''){toast('Ingrese el efectivo recibido antes de registrar el abono.','error');return;}
+    const due=dueOf(stay);
+    if(due<=0){toast('La habitación ya no tiene saldo pendiente. Puede registrar la salida.','error');return;}
+    const quote=checkoutAbonoQuote(due,f.method==='transferencia'?f.transferAmount:f.cashTendered,f.method);
+    if(quote.missing||quote.invalid||quote.applied<=0){
+      toast(f.method==='efectivo'?'Ingrese el efectivo recibido antes de registrar el pago.':'Ingrese el importe transferido válido antes de registrar el pago.','error');return;
+    }
+    if(f.method==='transferencia'&&quote.exceeds){
+      toast('El monto transferido no puede superar el saldo pendiente. Revise el importe.','error');return;
+    }
     if(f.method==='transferencia'&&!String(f.reference||'').trim()){toast('Debe registrar el código de transferencia.','error');return;}
-    const tender=resolveTendered(f.cashTendered,f.method,amount,f.changeStatus);if(tender.error){toast(tender.error,'error');return;}
+    const amount=quote.applied,tender=resolveTendered(
+      f.method==='efectivo'?f.cashTendered:undefined,f.method,amount,f.changeStatus);
+    if(tender.error){toast(tender.error,'error');return;}
     const paidAt=new Date().toISOString();
-    s.payments.push(paidCashRecord({id:uid('pay'),amount:asMoney(amount),method:f.method,shift:f.shift||'dia',reference:f.method==='transferencia'?f.reference.trim():'',createdAt:paidAt},tender,paidAt,f.shift||'dia'));
-    persist();render();toast('Abono de '+money(amount)+' registrado.');
+    stay.payments.push(paidCashRecord({
+      id:uid('pay'),amount,method:f.method,shift:f.shift||'dia',
+      reference:f.method==='transferencia'?String(f.reference).trim():'',
+      createdAt:paidAt
+    },tender,paidAt,f.shift||'dia'));
+    persist();render();toast('Pago de '+money(amount)+' registrado. Saldo restante '+money(dueOf(stay))+'.');
   }
   function appendExtra(f,product){
     const q=Number(f.quantity),stayId=f.stayId==='caja'?'':f.stayId,stay=stayOf(stayId);
