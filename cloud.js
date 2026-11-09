@@ -316,9 +316,14 @@
         var adminScript=document.createElement("script");adminScript.src="./admin.js?v=0.28-gerencial";
         adminScript.onerror=function(){status("No se pudo cargar el módulo administrativo",true);};
         adminScript.onload=function(){
-          var script=document.createElement("script");script.src="./app.js?v=0.28-gerencial";
-          script.onerror=function(){status("No se pudo cargar la aplicación",true);};
-          document.body.appendChild(script);
+          var cashScript=document.createElement("script");cashScript.src="./cash.js?v=0.29-apertura";
+          cashScript.onerror=function(){status("No se pudo cargar el control de apertura y cierre de caja",true);};
+          cashScript.onload=function(){
+            var script=document.createElement("script");script.src="./app.js?v=0.29-apertura";
+            script.onerror=function(){status("No se pudo cargar la aplicación",true);};
+            document.body.appendChild(script);
+          };
+          document.body.appendChild(cashScript);
         };
         document.body.appendChild(adminScript);
       }
