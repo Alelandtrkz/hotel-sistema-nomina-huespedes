@@ -45,6 +45,7 @@ jobs:
           node tests/salidas-abonos-cierre-v024.test.cjs
           node tests/abono-vuelto-maximo-v025.test.cjs
           node tests/saldo-fijo-abono-v026.test.cjs
+          node tests/varios-zonas-v027.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos
