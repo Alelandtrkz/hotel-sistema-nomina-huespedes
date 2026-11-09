@@ -115,7 +115,7 @@ test('Formulario de cierre pide arqueo y fondo siguiente, no permite editar desp
  assert(html.includes('cash-session-close-form'));
  assert(html.includes('name="counted"'));
  assert(html.includes('name="next_float"'));
- assert(html.includes('cerrado'));
+ assert(html.includes('Confirmar cierre definitivo'));
 });
 test('La apertura en caja cerrada requiere conteo físico de sueltos',()=>{
  mod.state.sessions=[];mod.state.modal='open';
