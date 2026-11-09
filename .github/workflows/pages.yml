@@ -28,6 +28,7 @@ jobs:
           node --check app.js
           node --check cloud.js
           node --check admin.js
+          node --check cash.js
       - name: Probar fase 1 y fase 2 antes de publicar
         run: |
           node tests/fase1.test.cjs
@@ -48,6 +49,7 @@ jobs:
           node tests/saldo-fijo-abono-v026.test.cjs
           node tests/varios-zonas-v027.test.cjs
           node tests/admin-gerencial-v028.test.cjs
+          node tests/caja-apertura-handover-v029.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos
