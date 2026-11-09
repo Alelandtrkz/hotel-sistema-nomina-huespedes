@@ -762,3 +762,17 @@ td.stock-unknown{color:#718074}
 .checkout-abono-remaining{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;background:#f6faf7;border:1px solid #dce8df;border-radius:8px;padding:10px 12px;margin-top:10px}
 .checkout-abono-remaining span{font-weight:650;color:#537463;font-size:11px}
 .checkout-abono-remaining strong{font-size:18px;color:#285f41;white-space:nowrap}
+
+
+/* v0.26 · El saldo es el único valor a cobrar; efectivo recibido decide pago/vuelto. */
+.checkout-auto-payment-hint{display:block;margin:10px 2px 0;font-size:11px;line-height:1.65;color:#667f6f}
+.checkout-payment-hint{background:#f7faf7;border-left:3px solid #84b298;padding:8px 11px;margin:12px 0 0;font-size:11px;line-height:1.6;color:#416f53}
+.checkout-transfer-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;align-items:end}
+.checkout-transfer-fields.hidden{display:none}
+.checkout-transfer-fields>.mini-caption{grid-column:1/-1;margin:0}
+.checkout-transfer-fields .field{min-width:0}
+.checkout-partial-payment .checkout-cash-grid>.field:first-child{border-bottom:1px solid #dce9dd}
+@media(max-width:540px){
+ .checkout-transfer-fields{grid-template-columns:minmax(0,1fr)}
+ .checkout-transfer-fields>.mini-caption{grid-column:1}
+}
