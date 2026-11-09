@@ -49,3 +49,5 @@ jobs:
         run: node tests/catalogo-tanda2-v022.test.cjs
       - name: Probar facturación al huésped y nómina de emisión externa
         run: node tests/facturas-nomina-v023.test.cjs
+      - name: Validar abonos parciales y salida con saldo restante
+        run: node tests/salidas-abonos-cierre-v024.test.cjs
