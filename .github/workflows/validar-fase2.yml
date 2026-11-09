@@ -55,3 +55,5 @@ jobs:
         run: node tests/abono-vuelto-maximo-v025.test.cjs
       - name: Verificar saldo fijo a cobrar y abonos sin campo duplicado
         run: node tests/saldo-fijo-abono-v026.test.cjs
+      - name: Verificar catálogo en zonas, filtros y conservación del stock
+        run: node tests/varios-zonas-v027.test.cjs

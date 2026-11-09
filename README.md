@@ -1,3 +1,27 @@
+# Hotel Unicornio v0.27 — Catálogo de Varios por zonas, sin espacio vacío
+
+La página **Varios y productos** muestra el **Catálogo de precios** con encabezado compacto, búsqueda por nombre o código de barras, filtro de categoría y pestañas **Todos, Vitrina, Nevera, Nevera helados y Bodega**. Las tarjetas pasan a estar **debajo de los controles** y ocupan todo el ancho disponible. La cuadrícula es adaptable a escritorio, tablet y celular.
+
+### Cómo se asignan las zonas
+
+Los productos antiguos no tienen ubicación confirmada. Hasta que recepción la indique, la interfaz muestra una **zona sugerida por categoría**, claramente marcada como «sugerida»: bebidas → Nevera; helados → Nevera helados; otras categorías → Vitrina. Esta sugerencia es **solo visual** y no modifica la información guardada.
+
+En **Tarifas y ajustes → Catálogo de productos** se añadió un selector de zona por producto. Tras elegir una zona y pulsar **Guardar precios, códigos y zonas**, la ubicación queda almacenada en el estado central a través de la sincronización existente de Supabase. Los nuevos productos pueden nacer con una zona asignada. El botón **Asignar zonas** en Varios dirige a la misma configuración.
+
+Bodega muestra productos asignados explícitamente a Bodega y también aquellos que ya tengan un conteo físico en Bodega. No se presume stock donde todavía no exista conteo.
+
+### Seguridad y compatibilidad
+
+Esta actualización **no altera el modelo de stock vigente**: las existencias físicas siguen registrándose por separado como `stockNevera` y `stockBodega`. La asignación visual a Vitrina o Nevera helados **no crea un nuevo depósito físico ni traslada unidades**. Las ventas mantienen las comprobaciones de disponibilidad existentes en Nevera. Para disponer de conteos independientes de Vitrina o Nevera helados hará falta ampliar el esquema de inventario en una etapa posterior.
+
+Los productos sin precio continúan sin poder venderse; los productos con Nevera contada en cero permanecen bloqueados para la venta. La búsqueda, selección de producto, ventas a habitaciones y venta directa conservan el comportamiento actual. No se ejecuta ninguna migración ni se cambia stock, pagos o datos de huéspedes.
+
+### Verificación
+
+Se añaden pruebas en `tests/varios-zonas-v027.test.cjs` para disposición visual, filtros, búsqueda, asignación persistida, sugerencias no confirmadas, compatibilidad con inventario existente y productos con precio pendiente. La suite completa se ejecuta en Actions y como requisito del despliegue a Pages.
+
+---
+
 # Hotel Unicornio v0.26 — Valor a cobrar igual al saldo pendiente, sin campo de valor del abono
 
 A solicitud de recepción, se elimina el campo **Valor del abono (USD)** en **Salidas y cobros → Abono a la cuenta pendiente**. Ahora **Valor a cobrar** es el importe exacto pendiente de la habitación, calculado con `dueOf(stay)` y nunca editable desde el formulario.

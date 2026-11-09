@@ -15,6 +15,10 @@
   };
   const BREAKFAST_EXTRA_PRICE=5;
   const CATEGORIES = {bebidas:'Bebidas',confiteria:'Confitería',aseo:'Aseo personal',helados:'Helados',otros:'Otros / servicios'};
+  // Organiza visualmente productos. La zona no modifica los contadores físicos
+  // existentes de Nevera/Bodega ni mueve stock entre ellos.
+  const SALES_ZONES={vitrina:'Vitrina',nevera:'Nevera',nevera_helados:'Nevera helados',bodega:'Bodega'};
+  const SALES_ZONE_OPTIONS=[['','Zona sugerida (sin confirmar)'],...Object.entries(SALES_ZONES)];
   const VIEWS = {inicio:'Panel general',habitaciones:'Habitaciones',ingreso:'Registro / ingreso',reservas:'Reservas',facturas:'Facturas por emitir',salidas:'Salidas y cobros',varios:'Varios / consumos',inventario:'Inventario de varios',caja:'Cierre de caja',huespedes:'Huéspedes',configuracion:'Tarifas y ajustes'};
   const DEFAULT_RATES = {
     individual:{sin:20,con:25},matrimonial:{sin:29,con:39},
@@ -357,7 +361,7 @@
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
   const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-2 section-gap">${field('Cédula o RUC personal','document',g.document,{required:true,placeholder:'10 dígitos o 13 terminados en 001',maxlength:13})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}${field('Dirección del huésped (opcional)','address',g.address||'',{placeholder:'Dirección para facturación'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por cédula o RUC de persona natural</label><input id="lookup-${scope}" inputmode="numeric" maxlength="13" placeholder="10 dígitos o 13 terminados en 001" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',invoiceFilter:'pendientes',cashDate:null,cashShift:'dia'};
+  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',productZone:'todas',productSearch:'',stockCategory:'todas',invoiceFilter:'pendientes',cashDate:null,cashShift:'dia'};
   function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',address:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceSameData:'',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
@@ -1656,12 +1660,77 @@
   const shiftOptions=[['dia','Día'],['noche','Noche']];
   const destinations=()=>[['caja','Venta directa / caja'],...activeStays().map(s=>[s.id,'Cargar a Hab. '+(roomOf(s.roomId)?.number||'—')+' · '+guestName(guestOf(s.guestId))])];
   const catName=c=>CATEGORIES[c]||'Otros / servicios';
+
+  function productSuggestedZone(p){
+    return p.category==='helados'?'nevera_helados':p.category==='bebidas'?'nevera':'vitrina';
+  }
+  function productSalesZone(p){
+    const confirmed=Object.prototype.hasOwnProperty.call(SALES_ZONES,p.zone||'');
+    const id=confirmed?p.zone:productSuggestedZone(p);
+    return {id,label:SALES_ZONES[id],confirmed};
+  }
+  function salesZoneMatches(p,zone){
+    if(zone==='todas')return true;
+    if(zone==='bodega')return productSalesZone(p).id==='bodega'||locationStock(p,'bodega')!==null;
+    return productSalesZone(p).id===zone;
+  }
+  const normalizeCatalogSearch=q=>String(q||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  function salesFilteredProducts(zone=ui.productZone,category=ui.productCategory,search=ui.productSearch){
+    const q=normalizeCatalogSearch(search);
+    return db.products.filter(p=>(category==='todas'||p.category===category)&&salesZoneMatches(p,zone)&&
+      (!q||[p.name,p.category,p.barcode].some(x=>normalizeCatalogSearch(x).includes(q)))).slice().sort(sortProduct);
+  }
+  function renderSalesCatalogCards(products=salesFilteredProducts()){
+    if(!products.length)return '<div class="sales-catalog-empty">No hay productos para esta zona o búsqueda. Puede asignar ubicaciones en <strong>Tarifas y ajustes → Catálogo de productos</strong>. Las zonas sugeridas todavía no están confirmadas.</div>';
+    return products.map(p=>{
+      const z=productSalesZone(p),nevera=locationStock(p,'nevera'),bodega=locationStock(p,'bodega'),
+        blocked=p.price===null||nevera===0;
+      const stockText=ui.productZone==='bodega'?
+        ('Bodega: '+stockDescription(bodega)+' · Nevera: '+stockDescription(nevera)):stockAvailabilityLabel(p);
+      const status=ui.productZone==='bodega'?(bodega===null?'stock-unknown':bodega===0?'stock-empty':bodega<=5?'stock-low':'stock-normal'):productStockClass(p);
+      return `<button class="product-item sales-product-card ${status}" type="button" data-action="pick-product" data-id="${esc(p.id)}"
+        ${blocked?'disabled title="'+(p.price===null?'Configure primero el precio en Tarifas y ajustes':'Sin existencias en Nevera: reponga antes de vender')+'"':''}>
+        <span class="sales-product-top"><span class="sales-product-zone ${z.confirmed?'confirmed':'suggested'}">${esc(z.label)}${z.confirmed?'':' · sugerida'}</span></span>
+        <strong>${esc(p.name)}</strong>
+        <small class="sales-product-category">${esc(catName(p.category))}</small>
+        <span class="price">${p.price===null?'Precio por definir':money(p.price)}</span>
+        <small class="sales-product-stock">${esc(stockText)}</small>
+      </button>`;
+    }).join('');
+  }
+  function updateSalesCatalog(){
+    const grid=document.getElementById('sales-catalog-grid');
+    if(!grid)return;
+    const filtered=salesFilteredProducts();
+    grid.innerHTML=renderSalesCatalogCards(filtered);
+    const count=document.getElementById('sales-catalog-result-count');
+    if(count)count.textContent=filtered.length+' de '+db.products.length+' productos';
+    document.querySelectorAll('[data-action="sales-zone-filter"]').forEach(button=>{
+      const active=button.dataset.id===ui.productZone;
+      button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+    });
+  }
   function renderExtras(){
-    const filtered=db.products.filter(p=>ui.productCategory==='todas'||p.category===ui.productCategory).slice().sort(sortProduct);
+    const filtered=salesFilteredProducts();
     const sold=db.extras.slice().reverse();
     const amount=sold.reduce((x,e)=>x+e.price*e.quantity,0);
+    const zoneButtons=[['todas','Todos'],...Object.entries(SALES_ZONES)];
     return head('Recepción / ventas','Varios y productos','Venta directa en caja o cargo a una habitación, con control opcional de existencias.',btn('Inventario de productos','go-inventario','btn-secondary'))+
-    `<section class="panel"><div class="panel-head"><div><h2>Catálogo de precios</h2><p>Precios transcritos del cartel proporcionado; sin precio visible en helados y lavandería.</p></div><div class="filters"><select id="filter-product-category" aria-label="Filtrar categoría">${selectOptions([['todas','Todas las categorías'],...Object.entries(CATEGORIES)],ui.productCategory)}</select><span class="mini-caption">${filtered.length} productos. Seleccione uno para agregarlo a la venta.</span></div><div class="product-catalog-grid">${filtered.map(p=>`<button class="product-item ${productStockClass(p)}" type="button" data-action="pick-product" data-id="${esc(p.id)}" ${p.price===null?'disabled title="Configure primero el precio en Tarifas y ajustes"':locationStock(p,'nevera')===0?'disabled title="Sin existencias en nevera"':''}><strong>${esc(p.name)}</strong><small>${esc(catName(p.category))}</small><span class="price">${p.price===null?'Precio por definir':money(p.price)}</span><small>${esc(stockAvailabilityLabel(p))}</small></button>`).join('')}</div></section>
+    `<section class="panel sales-catalog-panel">
+      <div class="sales-catalog-header">
+        <div class="sales-catalog-heading"><h2>Catálogo de precios</h2><p>Seleccione un producto para añadirlo a la venta.</p></div>
+        <div class="sales-catalog-tools">
+          <label class="sales-catalog-search"><span>Buscar</span><input id="sales-catalog-search" type="search" autocomplete="off" placeholder="Nombre o código de barras" aria-label="Buscar productos por nombre o código" value="${esc(ui.productSearch||'')}"></label>
+          <label class="sales-catalog-category"><span>Categoría</span><select id="filter-product-category" aria-label="Filtrar categoría">${selectOptions([['todas','Todas las categorías'],...Object.entries(CATEGORIES)],ui.productCategory)}</select></label>
+        </div>
+      </div>
+      <div class="sales-zone-filters" role="group" aria-label="Filtrar productos por zona">
+        ${zoneButtons.map(([zone,label])=>`<button type="button" class="sales-zone-tab ${zone===ui.productZone?'active':''}" data-action="sales-zone-filter" data-id="${esc(zone)}" aria-pressed="${zone===ui.productZone?'true':'false'}">${esc(label)}</button>`).join('')}
+        <span class="sales-zone-counter" id="sales-catalog-result-count" aria-live="polite">${filtered.length} de ${db.products.length} productos</span>
+      </div>
+      <div class="sales-catalog-guide">Las zonas <strong>«sugeridas»</strong> se agrupan por categoría hasta confirmar su ubicación en <strong>Tarifas y ajustes</strong>. El stock de ventas continúa registrándose en Nevera y Bodega; cambiar la zona no traslada unidades. <button type="button" class="sales-zone-settings-link" data-action="go-configuracion">Asignar zonas</button></div>
+      <div class="product-catalog-grid sales-catalog-cards" id="sales-catalog-grid">${renderSalesCatalogCards(filtered)}</div>
+    </section>
     <div class="two-col section-gap"><section class="panel"><div class="panel-head"><div><h2>Registrar venta de un producto</h2><p>Venta de mostrador o consumo cargado al huésped</p></div></div><div class="panel-body"><form id="extra-form"><div class="form-grid cols-2">
       ${select('Destino del consumo','stayId',destinations(),ui.extraTarget||'caja')}
       ${select('Producto','productId',[['','Seleccione el producto'],...db.products.slice().sort(sortProduct).map(p=>[p.id,`${catName(p.category)} · ${p.name}`])],'','required')}
@@ -1769,7 +1838,7 @@
     <div class="form-section-label">Tarifas adicionales, según cartel de recepción</div><div class="form-grid cols-3">${field('Niño mayor de 5 años','childRate',db.config.childRate,{type:'number',min:0,step:'0.01',hint:'USD 5 por adicional; falta confirmar política para 5 años o menos.'})}${field('Persona adicional mayor de 12 años','extraPersonRate',db.config.extraPersonRate,{type:'number',min:0,step:'0.01',hint:'USD 10. No se suma automáticamente al hospedaje.'})}${field('Entrada antes de check-in','earlyFee',db.config.earlyFee,{type:'number',min:0,step:'0.01',hint:'Cargo de USD 10, según cartel.'})}</div>
     <div class="dashboard-notice">El tarifario fotografiado no especifica el precio <strong>con desayuno para habitaciones con ventilador</strong>. Se mantiene pendiente, sin inventar un valor.</div>
     <div class="form-actions"><button class="btn btn-primary" type="submit">Guardar tarifas</button></div></form></div></section>
-    <aside class="panel"><div class="panel-head"><div><h2>Catálogo de productos</h2><p>${db.products.length} artículos y servicios · precios editables</p></div></div><div class="panel-body"><form id="products-form"><div class="product-settings-list">${db.products.slice().sort(sortProduct).map(p=>`<div class="settings-table barcode-settings-row"><span class="text-strong">${esc(p.name)}<small class="mini-caption" style="display:block">${esc(CATEGORIES[p.category]||p.category||'Otros')}</small></span><div class="field"><input type="number" aria-label="Precio ${esc(p.name)}" name="product-${esc(p.id)}" min="0" step="0.01" placeholder="Por definir" value="${esc(p.price??'')}"></div><div class="field"><input aria-label="Código de barras ${esc(p.name)}" name="barcode-${esc(p.id)}" inputmode="text" maxlength="64" autocomplete="off" placeholder="Código de barras" value="${esc(p.barcode||'')}"></div></div>`).join('')}</div><div class="mini-caption section-gap">Para escanear desde una habitación, asigne aquí el código impreso en cada producto y guarde los cambios.</div><div class="form-actions"><button type="submit" class="btn btn-primary">Guardar precios y códigos</button></div></form><div class="divider"></div><form id="new-product-form"><div class="form-grid">${field('Nuevo producto / servicio','name','',{required:true,placeholder:'Ej. Servicio de planchado'})}${select('Categoría','category',Object.entries(CATEGORIES),'otros')}${field('Precio unitario','price','',{type:'number',min:0,step:'0.01',placeholder:'Por definir'})}${field('Código de barras (opcional)','barcode','',{placeholder:'Ej. 7501234567890',maxlength:64})}</div><button class="btn btn-secondary section-gap" type="submit">Agregar al catálogo</button></form></div></aside></div>
+    <aside class="panel"><div class="panel-head"><div><h2>Catálogo de productos</h2><p>${db.products.length} artículos y servicios · precios editables</p></div></div><div class="panel-body"><form id="products-form"><div class="product-settings-list">${db.products.slice().sort(sortProduct).map(p=>`<div class="settings-table barcode-settings-row"><span class="text-strong">${esc(p.name)}<small class="mini-caption" style="display:block">${esc(CATEGORIES[p.category]||p.category||'Otros')}</small></span><div class="field"><input type="number" aria-label="Precio ${esc(p.name)}" name="product-${esc(p.id)}" min="0" step="0.01" placeholder="Por definir" value="${esc(p.price??'')}"></div><div class="field"><input aria-label="Código de barras ${esc(p.name)}" name="barcode-${esc(p.id)}" inputmode="text" maxlength="64" autocomplete="off" placeholder="Código de barras" value="${esc(p.barcode||'')}"></div><div class="field"><select name="zone-${esc(p.id)}" aria-label="Ubicación de ${esc(p.name)}">${selectOptions(SALES_ZONE_OPTIONS,p.zone||'')}</select></div></div>`).join('')}</div><div class="mini-caption section-gap">Asigne la zona de cada producto y, si corresponde, su código de barras. <strong>La zona organiza las tarjetas de Varios; no mueve existencias ni reemplaza el conteo de Nevera/Bodega.</strong></div><div class="form-actions"><button type="submit" class="btn btn-primary">Guardar precios, códigos y zonas</button></div></form><div class="divider"></div><form id="new-product-form"><div class="form-grid">${field('Nuevo producto / servicio','name','',{required:true,placeholder:'Ej. Servicio de planchado'})}${select('Categoría','category',Object.entries(CATEGORIES),'otros')}${field('Precio unitario','price','',{type:'number',min:0,step:'0.01',placeholder:'Por definir'})}${field('Código de barras (opcional)','barcode','',{placeholder:'Ej. 7501234567890',maxlength:64})}${select('Zona de exhibición','zone',SALES_ZONE_OPTIONS,'')}</div><button class="btn btn-secondary section-gap" type="submit">Agregar al catálogo</button></form></div></aside></div>
     <section class="panel section-gap"><div class="panel-head"><div><h2>Inventario de habitaciones</h2><p>Según hoja entregada: 19 flexibles A/C, 2 flexibles ventilador, 2 dobles, 2 triples y 8 arrendadas únicas.</p></div></div><div class="panel-body"><div class="pill-list">${db.rooms.map(r=>`<span class="small-tag">${esc(r.number)} · ${esc(LABELS[r.type])}</span>`).join('')}</div>
       <details class="inventory-details section-gap"><summary>Editar número, categoría y estado del inventario</summary><form id="room-inventory-form"><div class="inventory-row inventory-heading"><span>Número</span><span>Tipo</span><span>Estado</span><span>Acción</span></div>${db.rooms.map(r=>`<div class="inventory-row"><input aria-label="Número de ${esc(r.number)}" name="${esc(r.id)}__number" value="${esc(r.number)}" maxlength="8" required><select aria-label="Tipo de ${esc(r.number)}" name="${esc(r.id)}__type">${selectOptions(ROOM_TYPES.map(t=>[t,LABELS[t]]),r.type)}</select><span>${statusTag(r.status)}</span><button class="btn btn-sm btn-danger" type="button" data-action="delete-room" data-id="${esc(r.id)}">Eliminar</button></div>`).join('')}<div class="form-actions"><button class="btn btn-primary" type="submit">Guardar inventario</button></div></form></details>
       <div class="form-section-label">Agregar una habitación</div><form id="new-room-form"><div class="form-grid cols-3">${field('Número de habitación','number','',{required:true,placeholder:'Ej. 31'})}${select('Categoría física','type',ROOM_TYPES.map(t=>[t,LABELS[t]]),'flex_aire')}<div class="field"><label>&nbsp;</label><button class="btn btn-secondary" type="submit">Agregar habitación</button></div></div></form>
@@ -2299,10 +2368,14 @@
       if(!barcodeValid(barcode)){toast('Código de barras inválido para '+p.name+'. Use entre 3 y 64 caracteres, sin espacios.','error');return;}
       if(barcode&&codes.has(barcode)){toast('Los códigos de barras no pueden repetirse. Revise '+p.name+'.','error');return;}
       if(barcode)codes.add(barcode);
-      draft.push({p,price:raw===''?null:asMoney(raw),barcode});
+      const zone=f['zone-'+p.id]===undefined?(p.zone||''):String(f['zone-'+p.id]||'');
+      if(zone&&!Object.prototype.hasOwnProperty.call(SALES_ZONES,zone)){
+        toast('Revise la zona de '+p.name+'.','error');return;
+      }
+      draft.push({p,price:raw===''?null:asMoney(raw),barcode,zone});
     }
-    for(const row of draft){row.p.price=row.price;row.p.barcode=row.barcode;}
-    persist();render();toast('Precios y códigos de barras guardados.');
+    for(const row of draft){row.p.price=row.price;row.p.barcode=row.barcode;row.p.zone=row.zone;}
+    persist();render();toast('Precios, códigos y zonas guardados.');
   }
   function processInventory(){
     const f=readForm('room-inventory-form'),proposed=[];
@@ -2321,7 +2394,9 @@
     if(!name||name.length>60||db.products.some(p=>p.name.toLowerCase()===name.toLowerCase())){toast('Use un nombre de producto único, de hasta 60 caracteres.','error');return;}
     if(price!==''&&(!Number.isFinite(Number(price))||Number(price)<0)){toast('Ingrese un precio válido o deje el campo vacío.','error');return;}
     if(!barcodeValid(barcode)||barcode&&productByBarcode(barcode)){toast('Ingrese un código de barras válido y no repetido.','error');return;}
-    db.products.push({id:uid('product'),name,category:CATEGORIES[f.category]?f.category:'otros',price:price===''?null:asMoney(price),barcode,stock:null});
+    const zone=String(f.zone||'');
+    if(zone&&!Object.prototype.hasOwnProperty.call(SALES_ZONES,zone)){toast('Seleccione una zona válida.','error');return;}
+    db.products.push({id:uid('product'),name,category:CATEGORIES[f.category]?f.category:'otros',price:price===''?null:asMoney(price),barcode,zone,stock:null});
     persist();render();toast('Producto agregado al catálogo.');
   }
   function processNewRoom(){
@@ -2402,6 +2477,10 @@
         break;
       }
       case 'pick-room-extra-product':selectRoomExtraProduct(id);break;
+      case 'sales-zone-filter':{
+        if(id!=='todas'&&!Object.prototype.hasOwnProperty.call(SALES_ZONES,id))break;
+        ui.productZone=id;updateSalesCatalog();break;
+      }
       case 'pick-product':{const sel=document.querySelector('#extra-form [name=productId]');if(sel){sel.value=id;updatePricing();sel.closest('.panel')?.scrollIntoView({behavior:'smooth',block:'center'});}break;}
       case 'lookup-guest':lookupGuest(el.dataset.scope);break;
       case 'open-reservation-guest-search':openReservationGuestSearch();break;
@@ -2511,7 +2590,7 @@
       case 'reset-demo':{
         if(window.hotelCloud?.ready){toast('La opción de borrar todos los datos está deshabilitada mientras se usa la base compartida.','error');break;}
         if(!window.confirm('Se eliminarán todos los datos de demostración de este navegador. ¿Continuar?'))break;
-        db=defaults();ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',invoiceFilter:'pendientes',cashDate:null,cashShift:'dia'};persist();render();toast('Demostración restablecida.');break;
+        db=defaults();ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',productZone:'todas',productSearch:'',stockCategory:'todas',invoiceFilter:'pendientes',cashDate:null,cashShift:'dia'};persist();render();toast('Demostración restablecida.');break;
       }
       default:break;
     }
@@ -2524,6 +2603,9 @@
   document.addEventListener('input',e=>{
     const target=e.target;
     if(['stock-product','stock-location','stock-mode','stock-quantity'].includes(target.id))updateStockPreview();
+    if(target.id==='sales-catalog-search'){
+      ui.productSearch=target.value;updateSalesCatalog();return;
+    }
     if(target.id==='room-extra-search-input'){
       const results=document.getElementById('room-extra-search-results');
       if(results)results.innerHTML=renderRoomProductMatches(target.value);
@@ -2554,7 +2636,7 @@
   });
   document.addEventListener('change',e=>{
     const el=e.target;
-    if(el.id==='filter-product-category'){ui.productCategory=el.value;render();return;}
+    if(el.id==='filter-product-category'){ui.productCategory=el.value;updateSalesCatalog();return;}
     if(el.id==='filter-stock-category'){ui.stockCategory=el.value;render();return;}
     if(el.id==='invoice-status-filter'){ui.invoiceFilter=el.value;render();return;}
     if(['stock-product','stock-location','stock-mode'].includes(el.id)){updateStockPreview();return;}
