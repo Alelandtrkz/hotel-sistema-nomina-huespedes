@@ -1,3 +1,28 @@
+# Hotel Unicornio v0.23 — Facturación con datos del huésped y nómina de facturas
+
+## Registro de ingreso
+
+En **04 · Facturación y observaciones**, si selecciona **Sí, solicita factura** aparece la casilla **Factura a los mismos datos del huésped**. Al marcarla se copian del registro del huésped el nombre completo, cédula/RUC personal, dirección y correo. La dirección del huésped ahora es un campo opcional de su ficha; si no se conoce, se deja el campo de facturación editable para completarlo. Si no se dispone de correo, también se completa manualmente. No se inventan datos de facturación.
+
+Con la casilla desmarcada, los cuatro campos se editan libremente para facturar a otro titular o empresa. Los campos del huésped y sus datos facturables se validan al guardar. La preferencia de mismos datos queda asociada a la estadía. Una reserva que se convierte en ingreso también utiliza esta sección.
+
+## Menú Facturas
+
+Se añade **Facturas** al menú lateral izquierdo. Es una **nómina de solicitudes asociadas a estadías** creadas con **Sí, solicita factura**. Cada habitación del mismo cliente tiene una fila independiente.
+
+- **Pendientes** (predeterminado), **Facturadas** y **Todas**.
+- Nombre del huésped, nombre de facturación, cédula/RUC, dirección, correo, número de habitación, fechas de estadía y estado del alojamiento.
+- Total de la cuenta de habitación, total ya facturado, total pendiente de facturar y cobros recibidos. **El saldo de facturación no equivale al saldo por cobrar**. Se muestran los cargos de hospedaje y varios realmente registrados.
+- El recepcionista emite la factura en su **aplicación de facturación externa**. Después escribe la referencia del documento efectivamente emitido y pulsa **Marcar emitida** con confirmación.
+- El estado y la referencia se conservan en el JSONB central de Supabase, dentro de la estadía. El flujo no emite, autoriza ni transmite facturas al SRI.
+- Si se agregan nuevos consumos a una habitación ya facturada, la diferencia se vuelve a mostrar como **Pendiente** y puede registrar otro comprobante externo complementario. Se verifica que no se reutilice el mismo número.
+
+**Precaución contable:** el valor presentado es el total operativo de la cuenta registrado por el sistema; NO reemplaza la revisión del IVA, impuestos, facturas anteriores o detalles tributarios en la aplicación de facturación. El registro manual requiere comprobante externo ya emitido.
+
+**Integridad:** no se modifican los documentos electrónicos, pagos ni reservas históricas ni el esquema de tablas de Supabase. La nueva suite `tests/facturas-nomina-v023.test.cjs` verifica autocompletado, facturación de ingreso, filtros, montos, registros de comprobantes y control de duplicados. GitHub Actions ejecuta la suite antes de publicar Pages.
+
+---
+
 # Hotel Unicornio v0.22 — Segunda tanda de 10 fotografías
 
 **Fecha de registro:** 8 de noviembre de 2026.
