@@ -691,3 +691,40 @@ td.stock-unknown{color:#718074}
  .stock-scan-actions{flex-direction:column;align-items:stretch}
  .stock-scan-actions>small{min-width:0}
 }
+
+
+/* v0.23 · Facturación del huésped y nómina administrativa de facturas */
+.invoice-choice-row{display:flex;align-items:flex-end;flex-wrap:wrap;gap:14px 18px}
+.invoice-choice-row>.field{flex:0 1 290px;min-width:230px}
+.invoice-same-wrap{display:flex;gap:9px;align-items:center;min-height:48px;padding:11px 15px;border:1px solid #d6e6db;border-radius:10px;background:#f5faf6;font-size:12px;font-weight:700;color:#2b5941;cursor:pointer}
+.invoice-same-wrap input[type=checkbox]{width:18px;height:18px;accent-color:#236b48;flex:0 0 18px}
+.invoice-same-wrap.hidden{display:none}
+#invoice-same-hint{margin:9px 0 0}
+#invoice-fields input[readonly]{background:#f1f7f3;color:#385844;border-color:#c5ddcc}
+.invoice-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.invoice-roster .panel-head{align-items:center;gap:15px;flex-wrap:wrap}
+.invoice-filter-wrap{display:flex;gap:8px;align-items:center;font-size:12px;color:#617d69}
+.invoice-filter-wrap label{font-weight:650}
+.invoice-filter-wrap select{border:1px solid #d5e2d8;border-radius:9px;padding:8px 12px;background:#fff;min-width:155px}
+.invoice-roster .panel-body{padding:12px 17px 17px}
+.invoice-legal-note{border:1px solid #e0e9df;background:#f8fbf8;border-radius:9px;padding:11px 14px;margin:0 0 13px;line-height:1.55}
+.invoice-table{min-width:940px}
+.invoice-table th{white-space:nowrap}
+.invoice-table td{vertical-align:top;line-height:1.45}
+.invoice-table td strong{font-size:12px}
+.invoice-table td .mini-caption{display:block;font-size:10.5px;line-height:1.65;overflow-wrap:anywhere}
+.invoice-contact-details{margin-top:5px}
+.invoice-contact-details>summary{font-size:10.5px;color:#327251;cursor:pointer}
+.invoice-contact-details small{display:block;margin:5px 0;font-size:10.5px;line-height:1.4;overflow-wrap:anywhere}
+.invoice-issued-form{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:170px}
+.invoice-issued-form label{font-size:10px;font-weight:700;color:#587364}
+.invoice-issued-form input{max-width:210px;width:100%;min-height:37px;font-size:11px;border:1px solid #d3e2d9;padding:8px 10px;border-radius:8px}
+.invoice-issued-form button{min-height:33px;font-size:11px}
+@media(max-width:760px){
+ .invoice-choice-row{display:grid;grid-template-columns:1fr;gap:11px}
+ .invoice-choice-row>.field{min-width:0;width:100%}
+ .invoice-same-wrap{min-height:46px}
+ .invoice-metrics{grid-template-columns:1fr;gap:10px}
+ .invoice-roster .panel-body{padding:10px}
+ .invoice-roster .panel-head{padding:15px}
+}

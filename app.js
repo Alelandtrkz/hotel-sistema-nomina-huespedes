@@ -15,7 +15,7 @@
   };
   const BREAKFAST_EXTRA_PRICE=5;
   const CATEGORIES = {bebidas:'Bebidas',confiteria:'Confitería',aseo:'Aseo personal',helados:'Helados',otros:'Otros / servicios'};
-  const VIEWS = {inicio:'Panel general',habitaciones:'Habitaciones',ingreso:'Registro / ingreso',reservas:'Reservas',salidas:'Salidas y cobros',varios:'Varios / consumos',inventario:'Inventario de varios',caja:'Cierre de caja',huespedes:'Huéspedes',configuracion:'Tarifas y ajustes'};
+  const VIEWS = {inicio:'Panel general',habitaciones:'Habitaciones',ingreso:'Registro / ingreso',reservas:'Reservas',facturas:'Facturas por emitir',salidas:'Salidas y cobros',varios:'Varios / consumos',inventario:'Inventario de varios',caja:'Cierre de caja',huespedes:'Huéspedes',configuracion:'Tarifas y ajustes'};
   const DEFAULT_RATES = {
     individual:{sin:20,con:25},matrimonial:{sin:29,con:39},
     individual_ventilador:{sin:17,con:null},matrimonial_ventilador:{sin:23,con:null},
@@ -309,17 +309,17 @@
   const noRows=(message='Todavía no hay registros.')=>`<div class="empty"><div class="empty-icon">▧</div>${esc(message)}</div>`;
   const field=(title,name,value='',opts={})=>`<div class="field ${opts.full?'full':''}"><label for="${esc(opts.id||name)}">${esc(title)}${opts.required?' *':''}</label>${opts.textarea?`<textarea id="${esc(opts.id||name)}" name="${esc(name)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''}>${esc(value)}</textarea>`:`<input id="${esc(opts.id||name)}" name="${esc(name)}" type="${esc(opts.type||'text')}" value="${esc(value)}" placeholder="${esc(opts.placeholder||'')}" ${opts.required?'required':''} ${opts.min!==undefined?`min="${opts.min}"`:''} ${opts.max!==undefined?`max="${opts.max}"`:''} ${opts.step!==undefined?`step="${opts.step}"`:''} ${opts.maxlength?`maxlength="${opts.maxlength}"`:''} ${opts.readonly?'readonly':''} autocomplete="off">`}${opts.hint?`<div class="field-hint">${esc(opts.hint)}</div>`:''}</div>`;
   const select=(title,name,opts,value,extra='',domId=name)=>`<div class="field"><label for="${esc(domId)}">${esc(title)}</label><select id="${esc(domId)}" name="${esc(name)}" ${extra}>${selectOptions(opts,value)}</select></div>`;
-  const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-3 section-gap">${field('Cédula o RUC personal','document',g.document,{required:true,placeholder:'10 dígitos o 13 terminados en 001',maxlength:13})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}</div>`;
+  const guestFields=(g={})=>`<div class="form-grid cols-4">${field('Primer nombre','firstName',g.firstName,{required:true,placeholder:'Primer nombre'})}${field('Segundo nombre','secondName',g.secondName,{placeholder:'Segundo nombre'})}${field('Primer apellido','lastName',g.lastName,{required:true,placeholder:'Primer apellido'})}${field('Segundo apellido','secondLastName',g.secondLastName,{placeholder:'Segundo apellido'})}</div><div class="form-grid cols-2 section-gap">${field('Cédula o RUC personal','document',g.document,{required:true,placeholder:'10 dígitos o 13 terminados en 001',maxlength:13})}${field('Teléfono / WhatsApp','phone',g.phone,{required:true,placeholder:'09XXXXXXXX'})}${field('Correo electrónico','email',g.email,{type:'email',placeholder:'correo@ejemplo.com'})}${field('Dirección del huésped (opcional)','address',g.address||'',{placeholder:'Dirección para facturación'})}</div>`;
   const lookupBlock=(scope,query,message,isFound)=>`<div class="lookup-box"><div class="lookup-line"><div class="field"><label for="lookup-${scope}">Buscar huésped por cédula o RUC de persona natural</label><input id="lookup-${scope}" inputmode="numeric" maxlength="13" placeholder="10 dígitos o 13 terminados en 001" value="${esc(query||'')}"></div>${btn('Buscar huésped','lookup-guest','btn-secondary',`data-scope="${scope}"`)}</div>${message?`<div class="lookup-result ${isFound?'':'notfound'}">${esc(message)}</div>`:''}</div>`;
-  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};
-  function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
+  let ui={view:'inicio',selectedRoomId:null,selectedHistoryStayId:null,closedHistoryPage:0,checkinExtraRooms:[],checkinRowSeq:0,checkinVarios:[],checkinVariosSeq:0,checkinProductSearch:'',checkinVariosOpen:false,extraTarget:'caja',roomFilter:'todos',roomTypeFilter:'todos',roomDateMode:false,roomDate:null,lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',invoiceFilter:'pendientes',cashDate:null,cashShift:'dia'};
+  function initialCheckinDraft(){return {firstName:'',secondName:'',lastName:'',secondLastName:'',document:'',phone:'',email:'',address:'',arrival:today(),departure:tomorrow(),type:'individual',roomId:'',breakfast:'sin',paymentMethod:'efectivo',shift:'dia',transferCode:'',invoice:'no',invoiceSameData:'',invoiceName:'',invoiceId:'',invoiceAddress:'',invoiceEmail:'',notes:''};}
   function initialReservationDraft(){return {name:'',phone:'',document:'',arrival:today(),departure:tomorrow(),type:'individual',breakfast:'sin',roomId:'',advance:'0',advanceMethod:'efectivo',advanceRef:'',shift:'dia',notes:''};}
   function render(){
     closeRoomBarcodeScanner();
     if(!db.rooms.every(r=>['disponible','ocupada','limpieza','arrendada'].includes(r.status)))db.rooms.forEach(r=>{if(!['disponible','ocupada','limpieza','arrendada'].includes(r.status))r.status=r.type==='arrendada'?'arrendada':'disponible';});
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===ui.view));
     document.getElementById('breadcrumb').textContent=VIEWS[ui.view];
-    const views={inicio:renderDashboard,habitaciones:renderRooms,ingreso:renderCheckin,reservas:renderReservations,salidas:renderCheckout,varios:renderExtras,inventario:renderStock,caja:renderCash,huespedes:renderGuests,configuracion:renderSettings};
+    const views={inicio:renderDashboard,habitaciones:renderRooms,ingreso:renderCheckin,reservas:renderReservations,salidas:renderCheckout,varios:renderExtras,inventario:renderStock,facturas:renderInvoices,caja:renderCash,huespedes:renderGuests,configuracion:renderSettings};
     document.getElementById('app-view').innerHTML=(views[ui.view]||renderDashboard)()+`<div class="footer-note">Hotel Unicornio · Puerto Francisco de Orellana · ${window.hotelCloud?.ready?'Versión beta sincronizada con Supabase':'Prototipo local'}</div>`;
     updatePricing();
   }
@@ -1211,8 +1211,42 @@
       availableForCheckin(r,d.arrival,d.departure,d.primary===false?null:ui.prefillBookingId));
     return [['','Seleccionar habitación disponible'],...rooms.map(r=>[r.id,'Habitación '+r.number])];
   }
+
+  function sameGuestInvoiceData(d){
+    return {invoiceName:guestName(d),invoiceId:String(d.document||'').trim(),
+      invoiceAddress:String(d.address||d.invoiceAddress||'').trim(),
+      invoiceEmail:String(d.email||d.invoiceEmail||'').trim()};
+  }
+  function syncSameGuestInvoice(){
+    const form=document.getElementById('checkin-form');
+    if(!form)return;
+    const same=document.getElementById('checkin-invoice-same');
+    const enabled=form.querySelector('[name=invoice]')?.value==='si'&&Boolean(same?.checked);
+    const isInvoice=form.querySelector('[name=invoice]')?.value==='si';
+    document.getElementById('invoice-same-wrap')?.classList.toggle('hidden',!isInvoice);
+    document.getElementById('invoice-fields')?.classList.toggle('hidden',!isInvoice);
+    document.getElementById('invoice-same-hint')?.classList.toggle('hidden',!isInvoice);
+    const fields=document.getElementById('invoice-fields');
+    if(!fields)return;
+    const data=readForm('checkin-form');
+    if(enabled){
+      const matched=sameGuestInvoiceData(data);
+      for(const [key,val] of Object.entries(matched)){
+        const input=fields.querySelector('[name='+key+']');
+        if(!input)continue;
+        input.value=val;
+        // Si falta dirección/correo en el huésped, se pueden completar aquí.
+        input.readOnly=(key==='invoiceName'||key==='invoiceId'||(key==='invoiceAddress'&&Boolean(data.address))||(key==='invoiceEmail'&&Boolean(data.email)));
+      }
+    }else fields.querySelectorAll('input').forEach(input=>{input.readOnly=false;});
+    const hint=document.getElementById('invoice-same-hint');
+    if(hint)hint.textContent=enabled?'Nombre y documento del huésped cargados automáticamente. Si faltan dirección o correo, complételos antes de guardar.':'Puede ingresar datos de facturación diferentes.';
+    ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form'),invoiceSameData:enabled?'si':''};
+  }
+
   function renderCheckin(){
     const d=ui.checkinDraft||(ui.checkinDraft=initialCheckinDraft());
+    if(d.invoice==='si'&&d.invoiceSameData==='si')Object.assign(d,sameGuestInvoiceData(d));
     const estimation=checkinGroupEstimate(d),nights=estimation.nights,nightRate=checkinNightRate(d.type,d.breakfast,d.paymentMethod),stayTotal=estimation.grandTotal,b=reservationOf(ui.prefillBookingId);
     const bookedAdvance=b?.advance||0,initialPayment=checkinPaymentAmount(d,stayTotal,bookedAdvance),choice=checkinPaymentChoice(d.paymentMethod),amountPending=asMoney(Math.max(0,(stayTotal||0)-bookedAdvance));
     return head('Recepción / check-in','Registrar ingreso de huésped','Búsqueda por cédula y asignación de una o varias habitaciones al mismo titular.',btn('Ver habitaciones','go-habitaciones','btn-secondary'))+
@@ -1255,12 +1289,21 @@
         <div class="mini-caption section-gap" id="checkin-payment-help">${choice?.method==='por_cobrar'?'No entra dinero en caja; queda saldo pendiente por habitación.':'Cobro total calculado automáticamente; anticipos descontados.'}</div>
         <div class="discount-rule-warning ${choice?.discounted&&(d.invoice==='si'||checkinAssignments(d).some(e=>e.breakfast!=='sin')||b)?'':'hidden'}" id="discount-rule-warning">El descuento solo se permite por transferencia, sin desayuno, sin solicitud de factura y sin reservas de precio previamente confirmado. Seleccione tarifa normal o revise los datos.</div>
         </section>
-        <div class="form-section-label">04 · Facturación y observaciones</div><div class="form-grid cols-3">
-          ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice)}
-        </div><div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
-          ${field('Nombre / razón social','invoiceName',d.invoiceName,{placeholder:'Nombre de facturación'})}${field('Cédula / RUC','invoiceId',d.invoiceId,{placeholder:'Identificación tributaria'})}
-          ${field('Dirección','invoiceAddress',d.invoiceAddress,{placeholder:'Dirección para factura'})}${field('Correo para factura','invoiceEmail',d.invoiceEmail,{type:'email',placeholder:'factura@ejemplo.com'})}
-        </div><div class="form-grid section-gap">${field('Observaciones / solicitudes adicionales','notes',d.notes,{textarea:true,full:true,placeholder:'Horario de llegada, requerimientos, observaciones...'})}</div>
+        <div class="form-section-label">04 · Facturación y observaciones</div>
+        <div class="invoice-choice-row">
+          ${select('¿Solicita factura?','invoice',[['no','No'],['si','Sí, solicita factura']],d.invoice,'','checkin-invoice-choice')}
+          <label class="checkin-confirm-label invoice-same-wrap ${d.invoice==='si'?'':'hidden'}" id="invoice-same-wrap" for="checkin-invoice-same">
+            <input type="checkbox" id="checkin-invoice-same" name="invoiceSameData" value="si" ${d.invoiceSameData==='si'&&d.invoice==='si'?'checked':''}>
+            <span>Factura a los mismos datos del huésped</span>
+          </label>
+        </div>
+        <div id="invoice-fields" class="form-grid cols-2 section-gap ${d.invoice==='si'?'':'hidden'}">
+          ${field('Nombre / razón social','invoiceName',d.invoiceName,{placeholder:'Nombre de facturación',readonly:d.invoice==='si'&&d.invoiceSameData==='si'})}
+          ${field('Cédula / RUC','invoiceId',d.invoiceId,{placeholder:'Identificación tributaria',readonly:d.invoice==='si'&&d.invoiceSameData==='si'})}
+          ${field('Dirección','invoiceAddress',d.invoiceAddress,{placeholder:'Dirección para factura',readonly:d.invoice==='si'&&d.invoiceSameData==='si'&&Boolean(d.address)})}
+          ${field('Correo para factura','invoiceEmail',d.invoiceEmail,{type:'email',placeholder:'factura@ejemplo.com',readonly:d.invoice==='si'&&d.invoiceSameData==='si'&&Boolean(d.email)})}
+        </div>
+        <p id="invoice-same-hint" class="mini-caption ${d.invoice==='si'?'':'hidden'}">${d.invoiceSameData==='si'?'Nombre y documento del huésped cargados. Si faltan dirección o correo, complételos antes de guardar.':'Puede ingresar datos de facturación distintos a los del huésped.'}</p><div class="form-grid section-gap">${field('Observaciones / solicitudes adicionales','notes',d.notes,{textarea:true,full:true,placeholder:'Horario de llegada, requerimientos, observaciones...'})}</div>
         <div class="form-actions"><button class="btn btn-secondary" type="reset" id="clear-checkin">Limpiar formulario</button><button class="btn btn-primary" type="submit" id="checkin-submit">${choice?.method==='por_cobrar'?'Solicitar ingreso por cobrar':'Registrar ingreso con pago'}</button></div>
       </form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Resumen de hospedaje</h2><p>Tarifa según configuración del hotel</p></div></div><div class="panel-body">
@@ -1340,6 +1383,82 @@
     ui.reservationGuestSearchOpen=false;ui.reservationGuestSearchQuery='';
     render();
     document.getElementById('reservation-document')?.focus();
+  }
+
+
+  // Cola administrativa únicamente: una factura electrónica se emite en la aplicación externa.
+  // El saldo por facturar NO es el saldo por cobrar, pues puede existir pago anticipado.
+  function invoiceRecordsOf(stay){
+    return Array.isArray(stay.invoiceRecords)?stay.invoiceRecords:
+      stay.invoiceRecord?.status==='emitida'?[stay.invoiceRecord]:[];
+  }
+  const invoiceAmountIssued=stay=>asMoney(invoiceRecordsOf(stay).reduce((sum,record)=>sum+Number(record.amount||0),0));
+  const invoiceAmountPending=stay=>asMoney(Math.max(0,totalOf(stay)-invoiceAmountIssued(stay)));
+  const invoiceQueue=()=>db.stays.filter(stay=>stay.invoiceRequested===true).sort((a,b)=>
+    (a.createdAt||'').localeCompare(b.createdAt||''));
+  function renderInvoices(){
+    const all=invoiceQueue(),pending=all.filter(stay=>invoiceAmountPending(stay)>.001),
+      issued=all.filter(stay=>invoiceAmountPending(stay)<=.001),
+      visible=all.filter(stay=>ui.invoiceFilter==='todas'||(ui.invoiceFilter==='emitidas'?invoiceAmountPending(stay)<=.001:invoiceAmountPending(stay)>.001));
+    const outstanding=asMoney(pending.reduce((sum,stay)=>sum+invoiceAmountPending(stay),0));
+    return head('Recepción / control de facturación','Facturas por emitir',
+      'Nómina de habitaciones que solicitaron factura. Compruebe los valores y emita el comprobante en su aplicación de facturación.',btn('Registrar ingreso','go-ingreso','btn-secondary'))+
+      `<div class="metrics invoice-metrics">
+        <div class="metric"><div class="metric-top"><span class="metric-title">Facturas pendientes</span></div><div class="metric-value">${pending.length}</div></div>
+        <div class="metric"><div class="metric-top"><span class="metric-title">Valor pendiente de facturar</span></div><div class="metric-value">${money(outstanding)}</div></div>
+        <div class="metric"><div class="metric-top"><span class="metric-title">Cuentas completamente facturadas</span></div><div class="metric-value">${issued.length}</div></div>
+      </div>
+      <section class="panel invoice-roster section-gap">
+        <div class="panel-head"><div><h2>Nómina de facturación</h2><p>${all.length} habitaciones con solicitud de factura · cada habitación se controla por separado</p></div>
+        <div class="invoice-filter-wrap"><label for="invoice-status-filter">Mostrar</label>
+          <select id="invoice-status-filter">
+            ${selectOptions([['pendientes','Pendientes'],['emitidas','Facturadas'],['todas','Todas']],ui.invoiceFilter||'pendientes')}
+          </select></div></div>
+        <div class="panel-body">
+        <p class="mini-caption invoice-legal-note">Estos importes corresponden al total operativo registrado por habitación, incluidos los cargos adicionales. Verifique IVA, conceptos tributarios y valores definitivos antes de emitir en su sistema autorizado. Esta aplicación no emite facturas del SRI.</p>
+        ${visible.length?`<div class="table-wrap"><table class="table invoice-table">
+          <thead><tr><th>Huésped / facturar a</th><th>Hab. / estadía</th><th>Total cuenta</th><th>Por facturar</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody>${visible.map(stay=>{
+             const room=roomOf(stay.roomId),guest=guestOf(stay.guestId),details=stay.invoiceDetails||{},
+               pendingValue=invoiceAmountPending(stay),billed=invoiceAmountIssued(stay),
+               records=invoiceRecordsOf(stay);
+             return `<tr>
+               <td><strong>${esc(guestName(guest)||'Sin nombre')}</strong>
+                 <small class="mini-caption">Facturar a: ${esc(details.name||'Sin datos de facturación')}</small>
+                 <small class="mini-caption">Documento: ${esc(details.identification||'Pendiente')}</small>
+                 <details class="invoice-contact-details"><summary>Ver dirección y correo</summary><small>${esc(details.address||'Dirección pendiente')}</small><small>${esc(details.email||'Correo pendiente')}</small></details>
+               </td>
+               <td><strong>Habitación ${esc(room?.number||'—')}</strong><small class="mini-caption">${datePretty(stay.arrival)} – ${datePretty(stay.departure)}</small><small class="mini-caption">${stay.status==='activa'?'Ocupada / en curso':'Estadía finalizada'}</small></td>
+               <td><strong>${money(totalOf(stay))}</strong><small class="mini-caption">Ya facturado: ${money(billed)}</small><small class="mini-caption">Cobrado al huésped: ${money(paidOf(stay))}</small></td>
+               <td><strong class="${pendingValue>.001?'text-red':'text-green'}">${money(pendingValue)}</strong></td>
+               <td>${pendingValue>.001?tag('Pendiente','warning'):tag('Facturada','success')}
+                 ${records.length?`<details class="invoice-contact-details"><summary>Comprobante(s): ${records.length}</summary>
+                   ${records.map(r=>`<small>${esc(r.number||'Sin referencia')} · ${money(r.amount)} · ${timePretty(r.issuedAt)}</small>`).join('')}</details>`:''}</td>
+               <td>${pendingValue>.001?`<form id="invoice-issued-${esc(stay.id)}" class="invoice-issued-form" autocomplete="off">
+                   <label for="invoice-number-${esc(stay.id)}">N.º factura emitida externamente</label>
+                   <input id="invoice-number-${esc(stay.id)}" name="invoiceNumber" type="text" maxlength="60" required placeholder="001-001-000000001">
+                   <button type="submit" class="btn btn-primary btn-sm">Marcar emitida</button>
+                 </form>`:`<span class="mini-caption">Sin saldos por facturar</span>`}</td>
+             </tr>`;
+          }).join('')}</tbody></table></div>`:noRows(ui.invoiceFilter==='pendientes'?'No hay facturas pendientes de emisión.':'No hay registros para este filtro.')}
+        </div>
+      </section>`;
+  }
+  function processInvoiceIssued(stayId){
+    const stay=stayOf(stayId),formId='invoice-issued-'+stayId,form=readForm(formId);
+    if(!stay||!stay.invoiceRequested){toast('No existe una solicitud de factura para esa habitación.','error');return;}
+    const amount=invoiceAmountPending(stay),number=String(form.invoiceNumber||'').trim();
+    if(amount<=0){toast('Esta cuenta no tiene valores pendientes de facturar.','error');return;}
+    if(!/^[A-Za-z0-9][A-Za-z0-9 ./-]{2,59}$/.test(number)){
+      toast('Ingrese la referencia de la factura ya emitida en su sistema de facturación (3 a 60 caracteres).','error');return;
+    }
+    const duplicate=db.stays.some(s=>invoiceRecordsOf(s).some(r=>String(r.number||'').toUpperCase()===number.toUpperCase()));
+    if(duplicate){toast('Ese número de factura ya figura registrado. Revise antes de continuar.','error');return;}
+    if(!window.confirm('¿Confirma que la factura '+number+' por '+money(amount)+' ya fue EMITIDA en su aplicación externa? Esta acción solamente la marca en la nómina; no emite documentos tributarios.'))return;
+    if(!Array.isArray(stay.invoiceRecords))stay.invoiceRecords=invoiceRecordsOf(stay).slice();
+    stay.invoiceRecords.push({id:uid('invoice'),number,amount,issuedAt:new Date().toISOString(),status:'emitida',
+      source:'registro_manual_sistema_externo'});
+    persist();render();toast('Factura '+number+' registrada como emitida en el control administrativo.');
   }
 
   function renderReservations(){
@@ -1706,7 +1825,7 @@
   }
   ui.checkinDraft={...ui.checkinDraft,...readForm('checkin-form')};
 }
-  function guestData(f){return {firstName:String(f.firstName||'').trim(),secondName:String(f.secondName||'').trim(),lastName:String(f.lastName||'').trim(),secondLastName:String(f.secondLastName||'').trim(),document:String(f.document||'').trim(),phone:String(f.phone||'').trim(),email:String(f.email||'').trim()};}
+  function guestData(f){return {firstName:String(f.firstName||'').trim(),secondName:String(f.secondName||'').trim(),lastName:String(f.lastName||'').trim(),secondLastName:String(f.secondLastName||'').trim(),document:String(f.document||'').trim(),phone:String(f.phone||'').trim(),email:String(f.email||'').trim(),address:String(f.address||'').trim()};}
   function saveGuest(g){
     const found=getGuestByDocument(g.document);
     if(found){Object.assign(found,{...g,document:found.document});return found;} // No cambia el formato histórico ni duplica cédula/RUC.
@@ -1754,8 +1873,11 @@
   if(!checked.valid){toast(checked.error,'error');return;}
   const plan=prepareCheckinGroup(f,b);
   if(plan.error){toast(plan.error,'error');refreshRoomSelect('ingreso');return;}
-  if(f.invoice==='si'&&(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim())){
-    toast('Complete los cuatro datos de facturación.','error');return;
+  if(f.invoice==='si'){
+    if(f.invoiceSameData==='si')Object.assign(f,sameGuestInvoiceData(f));
+    if(!f.invoiceName?.trim()||!f.invoiceId?.trim()||!f.invoiceAddress?.trim()||!f.invoiceEmail?.trim()){
+      toast('Complete los cuatro datos de facturación. Si usa los datos del huésped, confirme dirección y correo.','error');return;
+    }
   }
   if(plan.method==='por_cobrar'){
     const unpaid=asMoney(plan.grandTotal-plan.deposit);
@@ -1788,6 +1910,7 @@
       }:null,
       paymentVerifiedAt:item.payment>0?checkinAt:null,
       invoiceRequested:f.invoice==='si',
+      invoiceSameData:f.invoice==='si'&&f.invoiceSameData==='si',
       invoiceDetails:f.invoice==='si'?{name:f.invoiceName.trim(),identification:f.invoiceId.trim(),
         address:f.invoiceAddress.trim(),email:f.invoiceEmail.trim()}:null,
       notes:String(f.notes||'').trim(),
@@ -2144,6 +2267,7 @@
       case 'go-inicio':navigate('inicio');break;
       case 'go-ingreso':ui.prefillBookingId=null;ui.checkinExtraRooms=[];ui.checkinRowSeq=0;ui.checkinVarios=[];ui.checkinVariosSeq=0;ui.checkinProductSearch='';ui.checkinVariosOpen=false;ui.checkinDraft=initialCheckinDraft();ui.lookup.ingreso='';ui.lookupMessage.ingreso='';navigate('ingreso');break;
       case 'go-reservas':navigate('reservas');break;
+      case 'go-facturas':navigate('facturas');break;
       case 'go-habitaciones':navigate('habitaciones');break;
       case 'toggle-room-dates':{
         ui.roomDateMode=!ui.roomDateMode;
@@ -2305,7 +2429,7 @@
       case 'reset-demo':{
         if(window.hotelCloud?.ready){toast('La opción de borrar todos los datos está deshabilitada mientras se usa la base compartida.','error');break;}
         if(!window.confirm('Se eliminarán todos los datos de demostración de este navegador. ¿Continuar?'))break;
-        db=defaults();ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',cashDate:null,cashShift:'dia'};persist();render();toast('Demostración restablecida.');break;
+        db=defaults();ui={view:'inicio',selectedRoomId:null,roomFilter:'todos',roomTypeFilter:'todos',lookup:{ingreso:'',huespedes:''},lookupMessage:{},lookupResult:{},checkinDraft:null,reservationDraft:null,reservationCreateOpen:false,reservationGuestSearchOpen:false,reservationGuestSearchQuery:'',selectedStayId:null,prefillBookingId:null,productCategory:'todas',stockCategory:'todas',invoiceFilter:'pendientes',cashDate:null,cashShift:'dia'};persist();render();toast('Demostración restablecida.');break;
       }
       default:break;
     }
@@ -2339,7 +2463,9 @@
       const values=readForm('checkin-form');
       ui.checkinDraft={...ui.checkinDraft,...values,
         paymentVerified:values.paymentVerified||'',creditConfirmed:values.creditConfirmed||''};
-      syncCheckinVariosForm();updatePricing();
+      syncCheckinVariosForm();
+      if(['firstName','secondName','lastName','secondLastName','document','email','address'].includes(target.name))syncSameGuestInvoice();
+      updatePricing();
     }
     if(target.closest('#reservation-form')){ui.reservationDraft={...ui.reservationDraft,...readForm('reservation-form')};updatePricing();}
     if(['#extra-form','#manual-extra-form','#cash-close-form','#payment-form','#room-extra-form','#room-breakfast-form','#room-extension-form','#room-person-form','#finalize-form'].some(s=>target.closest(s)))updatePricing();
@@ -2348,6 +2474,7 @@
     const el=e.target;
     if(el.id==='filter-product-category'){ui.productCategory=el.value;render();return;}
     if(el.id==='filter-stock-category'){ui.stockCategory=el.value;render();return;}
+    if(el.id==='invoice-status-filter'){ui.invoiceFilter=el.value;render();return;}
     if(['stock-product','stock-location','stock-mode'].includes(el.id)){updateStockPreview();return;}
     if(el.id==='cash-date'||el.id==='cash-shift'){ui.cashDraft=readForm('cash-close-form');if(el.id==='cash-date')ui.cashDate=el.value;else ui.cashShift=el.value;render();return;}
     if(el.id==='room-plan-date'){
@@ -2375,7 +2502,7 @@
         const transfer=checkinPaymentChoice(el.value)?.method==='transferencia';
         document.getElementById('transfer-field')?.classList.toggle('hidden',!transfer);
       }
-      if(el.name==='invoice')document.getElementById('invoice-fields')?.classList.toggle('hidden',el.value!=='si');
+      if(el.name==='invoice'||el.name==='invoiceSameData')syncSameGuestInvoice();
       updatePricing();return;
     }
     if(el.closest('#reservation-form')){
@@ -2389,6 +2516,7 @@
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
     const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-barcode-form':()=>applyRoomBarcode(document.getElementById('room-barcode-manual')?.value),'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
+    if(id.startsWith('invoice-issued-')){e.preventDefault();processInvoiceIssued(id.slice('invoice-issued-'.length));return;}
     if(handlers[id]){e.preventDefault();handlers[id]();}
   });
   document.addEventListener('reset',e=>{

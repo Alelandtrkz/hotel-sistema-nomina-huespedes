@@ -7,11 +7,11 @@
   <meta name="theme-color" content="#152523">
   <meta name="description" content="Gestión hotelera de demostración: habitaciones, reservas, varios, inventario y cierre de caja para Hotel Unicornio, El Coca.">
   <title>Hotel Unicornio · Gestión de huéspedes</title>
-  <link rel="stylesheet" href="./styles.css?v=0.21-inventario-escaner">
+  <link rel="stylesheet" href="./styles.css?v=0.23-facturas-nomina">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <style>html:not(.hotel-authorized) .app-shell{display:none!important}</style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js" defer></script>
-  <script src="./cloud.js?v=0.21-inventario-escaner" defer></script>
+  <script src="./cloud.js?v=0.23-facturas-nomina" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -26,6 +26,7 @@
         <button class="nav-item" data-view="habitaciones" type="button"><span class="nav-icon">▦</span><span>Habitaciones</span></button>
         <button class="nav-item" data-view="ingreso" type="button"><span class="nav-icon">⇥</span><span>Registro / ingreso</span></button>
         <button class="nav-item" data-view="reservas" type="button"><span class="nav-icon">▤</span><span>Reservas</span></button>
+        <button class="nav-item" data-view="facturas" type="button"><span class="nav-icon">▧</span><span>Facturas</span></button>
         <button class="nav-item" data-view="salidas" type="button"><span class="nav-icon">⇤</span><span>Salidas y cobros</span></button>
         <button class="nav-item" data-view="varios" type="button"><span class="nav-icon">◈</span><span>Varios / ventas</span></button>
         <button class="nav-item" data-view="inventario" type="button"><span class="nav-icon">▣</span><span>Inventario de varios</span></button>

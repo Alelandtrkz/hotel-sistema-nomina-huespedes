@@ -47,3 +47,5 @@ jobs:
         run: node tests/inventario-escaner-v021.test.cjs
       - name: Verificar segunda tanda de códigos EAN y catálogo
         run: node tests/catalogo-tanda2-v022.test.cjs
+      - name: Probar facturación al huésped y nómina de emisión externa
+        run: node tests/facturas-nomina-v023.test.cjs
