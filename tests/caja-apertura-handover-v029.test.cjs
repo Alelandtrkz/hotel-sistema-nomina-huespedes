@@ -132,8 +132,8 @@ test('La apertura en caja cerrada requiere conteo físico de sueltos',()=>{
 test('Las operaciones con dinero quedan bloqueadas hasta abrir caja y fuera del turno',()=>{
  mod.state.sessions=[];
  assert.equal(mod.canOperate(),false);
- mod.state.sessions=[session];
- // La jornada de la prueba es de otro día, así que tampoco se permite operar.
+ mod.state.sessions=[{...session,shift_date:'2020-01-01'}];
+ // Fecha deliberadamente distinta para que el test no dependa del reloj de CI.
  assert.equal(mod.canOperate(),false);
  assert(app.includes('if(!cashSessionAllowed())return;'));
  assert(app.includes("if(!stayId&&!cashSessionAllowed())return false;"));
@@ -145,7 +145,7 @@ test('Se mantiene el cierre histórico sin reescribirlo',()=>{
  assert(!cash.includes('db.closures.push'));
 });
 test('El navegador actualiza cash.js antes del app.js y evita claves privadas',()=>{
- assert(cloud.indexOf('cashScript.onload=function()')<cloud.indexOf('script.src="./app.js?v=0.29-apertura"'));
+ assert(cloud.indexOf('cashScript.onload=function()')<cloud.indexOf('script.src="./app.js?v=0.30-turnos"'));
  assert(!/service_role\s*[:=]\s*['"]/.test(cloud));
  assert(css.includes('.cash-modal-overlay'));
 });
