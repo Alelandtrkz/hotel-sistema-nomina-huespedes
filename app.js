@@ -157,6 +157,18 @@
   const reservationOf=id=>db.reservations.find(x=>x.id===id);
   const guestOf=id=>db.guests.find(x=>x.id===id);
   const activeStays=()=>db.stays.filter(x=>x.status==='activa');
+  // Las habitaciones arrendadas permanecen fuera del hospedaje diario, pero pueden
+  // acumular consumos pendientes asociados directamente a su habitación.
+  const rentalDestination=id=>'arrendada:'+id;
+  const rentalRoomFromDestination=value=>{
+    const target=String(value||'');
+    if(!target.startsWith('arrendada:'))return null;
+    const room=roomOf(target.slice('arrendada:'.length));
+    return room?.type==='arrendada'&&room.status==='arrendada'?room:null;
+  };
+  const isRentalDestination=value=>String(value||'').startsWith('arrendada:');
+  const rentalChargesOf=roomId=>db.extras.filter(e=>e.rentalRoomId===roomId&&e.method==='pendiente');
+  const rentalDueOf=roomId=>asMoney(rentalChargesOf(roomId).reduce((sum,e)=>sum+Number(e.price||0)*Number(e.quantity||0),0));
   const occupied=roomId=>activeStays().some(x=>x.roomId===roomId);
   const extrasOf=stayId=>db.extras.filter(x=>x.stayId===stayId).reduce((s,e)=>s+e.price*e.quantity,0);
   const paidOf=stay=>asMoney((stay.advance||0)+(stay.payments||[]).reduce((s,p)=>s+p.amount,0));
@@ -572,11 +584,12 @@
     }
   }
 
-  function renderRoomExtraSection(stay){
+  function renderRoomExtraSection(stay,rentalRoom=null){
+    const destination=stay?.id||(rentalRoom?rentalDestination(rentalRoom.id):'');
     const available=db.products.filter(p=>p.price!==null&&Number(p.price)>0).slice().sort(sortProduct);
     return `<details class="phase2-operation" id="phase2-extras"><summary><span>Agregar varios a la habitación</span><small>Busque productos o escanee su código de barras</small></summary>
       <div class="phase2-operation-body"><form id="room-extra-form">
-        <input type="hidden" name="stayId" value="${esc(stay.id)}">
+        <input type="hidden" name="stayId" value="${esc(destination)}">
         <div class="room-extra-tools">
           <button type="button" class="btn btn-secondary" data-action="toggle-room-extra-search">⌕ Buscar producto</button>
           <button type="button" class="btn btn-secondary" data-action="open-room-barcode-scanner">▣ Escanear código</button>
@@ -736,8 +749,48 @@
     }).join('')}</div>
   </section>`;
 }
+    function renderRentedRoomAccount(room){
+    const charges=rentalChargesOf(room.id),due=rentalDueOf(room.id);
+    const details=charges.length?charges.slice().reverse().map(e=>
+      '<div class="account-line"><div><strong>'+esc(e.productName)+'</strong>'+
+      '<small>'+esc(e.quantity)+' × '+money(e.price)+' · '+esc(datePretty(localDateOf(e.createdAt)))+
+      ' · '+esc(e.operator||'Recepción')+'</small></div>'+
+      '<strong>'+money(Number(e.price)*Number(e.quantity))+'</strong></div>').join(''):
+      '<p class="mini-caption">Sin cargos registrados todavía.</p>';
+    return '<div class="account-summary">'+
+      '<div class="account-main-total"><span>Consumos pendientes de la habitación arrendada</span>'+
+      '<strong class="'+(due>0?'text-red':'text-green')+'">'+money(due)+'</strong></div>'+
+      '<p class="mini-caption">Esta habitación permanece arrendada y fuera del inventario de hospedaje. '+
+      'Los consumos se cargan a su cuenta sin registrar efectivo en caja.</p></div>'+
+      '<div class="account-actions">'+
+      btn('Abrir catálogo completo de Varios','room-add-extras','btn-secondary',
+        'data-id="'+esc(rentalDestination(room.id))+'"')+
+      '<span class="mini-caption">Los cargos registrados aquí se mantienen pendientes. No se cobra automáticamente.</span></div>'+
+      '<details class="account-info-details" open><summary>Desglose de cargos · '+charges.length+
+      ' movimiento(s)</summary><div class="account-info-content">'+details+
+      '<div class="account-line"><strong>Saldo pendiente</strong><strong>'+money(due)+'</strong></div>'+
+      '</div></details>'+
+      '<div class="phase2-operation-list">'+
+      renderRoomExtraSection(null,room)+renderRentedManualSection(room)+
+      '</div>';
+  }
+  function renderRentedManualSection(room){
+    return '<details class="phase2-operation" id="phase2-rental-manual"><summary>'+
+      '<span>Agregar cargo adicional</span><small>Lavandería u otros servicios sin código</small></summary>'+
+      '<div class="phase2-operation-body"><form id="rental-manual-extra-form">'+
+      '<input type="hidden" name="stayId" value="'+esc(rentalDestination(room.id))+'">'+
+      '<div class="form-grid cols-2">'+
+      field('Descripción','name','',{required:true,placeholder:'Ej. Lavandería, servicio adicional'})+
+      select('Categoría','category',[['otros','Otros / servicios'],['helados','Helados'],['bebidas','Bebidas'],['confiteria','Confitería'],['aseo','Aseo personal']],'otros')+
+      field('Valor a cargar (USD)','amount','',{required:true,type:'number',min:.01,step:'.01'})+
+      field('Encargado','operator','',{placeholder:'Recepción'})+
+      '</div><p class="mini-caption">Este cargo se añade como pendiente de pago; no ingresa dinero en caja.</p>'+
+      '<button type="submit" class="btn btn-primary section-gap">Agregar cargo a la habitación</button>'+
+      '</form></div></details>';
+  }
+
   function renderRoomAccount(room,stay){
-  const guest=stay?guestOf(stay.guestId):null,owed=stay?pendingChangeOf(stay):0,due=stay?dueOf(stay):0;
+  const guest=stay?guestOf(stay.guestId):null,owed=stay?pendingChangeOf(stay):0,due=stay?dueOf(stay):room.status==='arrendada'?rentalDueOf(room.id):0;
   const charges=stay?db.extras.filter(e=>e.stayId===stay.id):[];
   const pays=stay?(stay.payments||[]):[];
   const extensions=stay?(stay.extensions||[]):[];
@@ -797,12 +850,12 @@
       ${renderPaymentForm(stay)}
     </div></details>
     ${owed>0?`<div class="account-change-actions"><strong>Vueltos pendientes a esta habitación</strong>${changeMovements().filter(x=>changePending(x.owner)>0&&((x.stayId===stay.id)||(stay.reservationId&&x.source==='reserva'&&x.id===stay.reservationId))).map(x=>`<div class="account-line"><div><span>${esc(x.label)}</span><strong>${money(changePending(x.owner))}</strong></div>${btn('Entregar vuelto','settle-change','btn-secondary btn-sm',`data-source="${esc(x.source)}" data-id="${esc(x.id)}"`)}</div>`).join('')}</div>`:''}
-  `:`<div class="account-empty">
-     <p>${room.status==='arrendada'?'Habitación arrendada; fuera del inventario operativo.':room.status==='limpieza'?'En limpieza. Marque disponible cuando esté lista.':'No hay estadía activa en esta habitación.'}</p>
+  `:(room.status==='arrendada'&&room.type==='arrendada'?renderRentedRoomAccount(room):`<div class="account-empty">
+     <p>${room.status==='limpieza'?'En limpieza. Marque disponible cuando esté lista.':'No hay estadía activa en esta habitación.'}</p>
      ${room.status==='disponible'?btn('Registrar ingreso','start-room-checkin','btn-primary',`data-id="${esc(room.id)}"`):''}
      ${room.status==='limpieza'?btn('Marcar limpia / disponible','mark-room-clean','btn-primary',`data-id="${esc(room.id)}"`):''}
      ${room.status==='disponible'?btn('Marcar pendiente de limpieza','mark-room-dirty','btn-secondary',`data-id="${esc(room.id)}"`):''}
-   </div>`;
+   </div>`);
   return `<div class="account-overlay" data-action="close-room-account" role="presentation">
     <div class="account-dialog" role="dialog" aria-modal="true" aria-label="Cuenta de habitación ${esc(room.number)}" data-account-dialog>
       <div class="account-dialog-header"><div><span class="eyebrow">CUENTA POR HABITACIÓN</span><h2>Habitación ${esc(room.number)}</h2><p>${esc(LABELS[room.type])} · ${roomStateLabel(room.status)}</p></div>
@@ -1587,7 +1640,7 @@
     <span>Página ${ui.closedHistoryPage+1} de ${closedPages}</span>
     ${btn('Más antiguas','history-older','btn-secondary btn-sm',ui.closedHistoryPage>=closedPages-1?'disabled':'')}</div></div>${history.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Huésped</th><th>Habitación</th><th>Salida</th><th>Total</th><th>Saldo</th><th>Historial</th></tr></thead><tbody>${history.map(x=>`<tr><td><strong>${esc(guestName(guestOf(x.guestId)))}</strong></td><td>${esc(roomOf(x.roomId)?.number||'—')}</td><td>${datePretty(x.actualCheckout?.slice(0,10)||x.departure)}</td><td>${money(totalOf(x))}</td><td>${tag(money(dueOf(x)),dueOf(x)?'warning':'success')}</td><td>${btn('Ver movimientos','show-stay-history','btn-secondary btn-sm',`data-id="${esc(x.id)}"`)}</td></tr>`).join('')}</tbody></table></div>`:noRows('Aún no hay salidas registradas.')}</section>${viewed&&viewed.status==='finalizada'?renderClosedHistoryDialog(viewed):''}`;
   }
-  const paidDirect=x=>!x.stayId&&['efectivo','transferencia'].includes(x.method);
+  const paidDirect=x=>!x.stayId&&!x.rentalRoomId&&['efectivo','transferencia'].includes(x.method);
   const productOf=id=>db.products.find(p=>p.id===id);
 
   // La ubicación se contabiliza por separado; un valor null significa 'sin conteo',
@@ -1660,7 +1713,7 @@
   }
 
   const shiftOptions=[['dia','Día'],['noche','Noche']];
-  const destinations=()=>[['caja','Venta directa / caja'],...activeStays().map(s=>[s.id,'Cargar a Hab. '+(roomOf(s.roomId)?.number||'—')+' · '+guestName(guestOf(s.guestId))])];
+  const destinations=()=>[['caja','Venta directa / caja'],...activeStays().map(s=>[s.id,'Cargar a Hab. '+(roomOf(s.roomId)?.number||'—')+' · '+guestName(guestOf(s.guestId))]),...db.rooms.filter(r=>r.type==='arrendada'&&r.status==='arrendada').map(r=>[rentalDestination(r.id),'Arrendada · Hab. '+r.number+' (a cuenta)'])];
   const catName=c=>CATEGORIES[c]||'Otros / servicios';
 
   function productSuggestedZone(p){
