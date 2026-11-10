@@ -64,3 +64,6 @@ jobs:
 
       - name: Probar apertura, arqueo, traspaso y cierre por turnos
         run: node tests/caja-apertura-handover-v029.test.cjs
+
+      - name: Probar consumos en habitaciones arrendadas
+        run: node tests/cargos-habitaciones-arrendadas-v031.test.cjs

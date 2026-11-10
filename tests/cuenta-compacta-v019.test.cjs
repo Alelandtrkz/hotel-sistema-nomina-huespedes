@@ -49,9 +49,9 @@ check('Turno Día inicia exactamente a 08:00 hora de El Coca',()=>{
  assert.equal(api.receptionShiftAt(new RealDate('2026-11-08T12:59:00Z')),'noche');
  assert.equal(api.receptionShiftAt(new RealDate('2026-11-08T13:00:00Z')),'dia');
 });
-check('Turno Día termina a las 20:00; fuera del rango es Noche',()=>{
- assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T00:59:00Z')),'dia');
- assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T01:00:00Z')),'noche');
+check('Turno Día termina a las 23:00; fuera del rango es Noche',()=>{
+ assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T03:59:00Z')),'dia');
+ assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T04:00:00Z')),'noche');
  assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T12:59:00Z')),'noche');
  assert.equal(api.receptionShift(),'dia');
 });
@@ -75,7 +75,7 @@ check('Persona adicional sin campo de nombre y con responsable y turno fechados'
  assert(html.includes('data-target="room-person-nights"'));
  assert(html.includes('Turno automático'));
  assert(html.includes('datetime="2026-11-08"'));
- assert(html.includes('08:00–20:00'));
+ assert(html.includes('08:00–23:00'));
  assert(!html.includes('id="room-person-shift"'));
 });
 check('Extensión recupera la tarjeta de fechas sobre el control de noches',()=>{
