@@ -71,11 +71,11 @@ test('Los movimientos anteriores con nombre permanecen visibles',()=>{
  assert(api.stayHistoryEvents(stay).some(e=>e.description.includes('HUESPED HISTÓRICO')));
 });
 test('Fecha y turno se muestran con la fecha de El Coca, no la fecha UTC',()=>{
- base();clock.value='2026-11-09T02:30:00.000Z';
+ base();clock.value='2026-11-09T04:30:00.000Z';
  const html=api.automaticShiftHint();
  assert(html.includes('datetime="2026-11-08"'));
  assert(html.includes('Noche'));
- assert(html.includes('20:00–08:00'));
+ assert(html.includes('23:00–08:00'));
  assert(!html.includes('datetime="2026-11-09"'));
 });
 test('El indicador actualiza la fecha cuando cambia el día en Ecuador',()=>{
@@ -89,6 +89,6 @@ test('El turno de día a las 08:00 coincide con la fecha del indicador',()=>{
  const html=api.automaticShiftHint();
  assert(html.includes('datetime="2026-11-09"'));
  assert(html.includes('Día'));
- assert(html.includes('08:00–20:00'));
+ assert(html.includes('08:00–23:00'));
 });
 if(fails)process.exitCode=1;
