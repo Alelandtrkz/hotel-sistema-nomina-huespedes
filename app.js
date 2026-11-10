@@ -2553,6 +2553,7 @@
       const number=String(f[r.id+'__number']||'').trim().toUpperCase(),type=f[r.id+'__type'];
       if(!/^[A-Z0-9-]{1,8}$/.test(number)||!ROOM_TYPES.includes(type)){toast('Revise número y tipo de habitación.','error');return;}
       if(type!==r.type&&(occupied(r.id)||db.reservations.some(b=>b.roomId===r.id&&['pendiente','confirmada'].includes(b.status)))){toast('No puede cambiar el tipo de una habitación ocupada o con reserva activa.','error');return;}
+      if(type!==r.type&&rentalDueOf(r.id)>0){toast('La habitación tiene consumos del arrendatario pendientes: no cambie su tipo sin conciliarlos.','error');return;}
       proposed.push({id:r.id,number,type});
     }
     if(new Set(proposed.map(x=>x.number)).size!==proposed.length){toast('Los números de habitación no pueden repetirse.','error');return;}
