@@ -137,7 +137,7 @@ test('Las operaciones con dinero quedan bloqueadas hasta abrir caja y fuera del 
  // Fecha deliberadamente distinta para que el test no dependa del reloj de CI.
  assert.equal(mod.canOperate(),false);
  assert(app.includes('if(!cashSessionAllowed())return;'));
- assert(app.includes("if(!stayId&&!cashSessionAllowed())return false;"));
+ assert(app.includes("if(!credit&&!cashSessionAllowed())return false;"));
  assert(app.includes("if(advance>0&&!cashSessionAllowed())return;"));
 });
 test('Se mantiene el cierre histórico sin reescribirlo',()=>{
