@@ -1,3 +1,13 @@
+# Hotel Unicornio v0.30 — Horarios de apertura y cierre de caja
+
+**Horario vigente (El Coca, Ecuador / America/Guayaquil):** turno **Día: 08:00 a 20:00**, turno **Noche: 20:00 a 08:00 del día siguiente**. El turno nocturno conserva la fecha del día en que inicia, incluso entre medianoche y las 07:59. A las 08:00 comienza el día; a las 20:00 comienza la noche.
+
+El horario se actualizó de manera coordinada en la identificación automática de turnos de recepción (`app.js`), en las ventanas de apertura/cierre de caja (`cash.js`) y en la función de apertura de Supabase (`hotel_cash_open`, mediante `supabase/migrations/20261109_cash_shift_0800_2000_v030.sql`). Se actualizaron las versiones de scripts para evitar caché antigua. No se reescriben cajas abiertas ni cierres históricos; cada sesión previa mantiene sus importes y fecha original. Se conserva la fórmula de arqueo: **fondo para vueltos + efectivo recibido − vueltos entregados − gastos y retiros**.
+
+Las pruebas del sistema cubren los límites de 07:59, 08:00, 19:59 y 20:00 en zona horaria de Ecuador.
+
+---
+
 # Hotel Unicornio v0.29 — Apertura, arqueo y cierre de caja con fondo de cambio
 
 El módulo **Cierre de caja** pasa a administrar **una sesión de caja por turno**. Al no haber sesión activa, presenta **Abrir caja**: el encargado cuenta físicamente los **sueltos destinados a dar vuelto**, registra el importe y observaciones. El turno se asigna automáticamente según **America/Guayaquil**, de 07:30 a 19:30 (día) y de 19:30 a 07:30 (noche). Las horas posteriores a medianoche antes de las 07:30 pertenecen a la jornada nocturna del día anterior.
