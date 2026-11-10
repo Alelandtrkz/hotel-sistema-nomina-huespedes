@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const read=p=>fs.readFileSync(path.resolve(__dirname,'..',p),'utf8');
 const app=read('app.js'),cloud=read('cloud.js'),cash=read('cash.js'),sql=read('supabase/migrations/20261109_cash_shift_open_handover_v029.sql'),
-  sync=read('supabase/migrations/20261109_cash_session_version_sync_v029.sql'),css=read('styles.css');
+  sync=read('supabase/migrations/20261109_cash_session_version_sync_v029.sql'),shiftV030=read('supabase/migrations/20261109_cash_shift_0800_2000_v030.sql'),css=read('styles.css'),cloudPage=read('index.html');
 new Function(app);new Function(cloud);new Function(cash);
 let failed=0;
 function test(name,fn){
@@ -59,15 +59,43 @@ test('Sólo una caja abierta por recepción, asignada al turno canónico',()=>{
  assert(sql.includes('hotel_one_open_cashbox'));
  assert(sql.includes('unique(cashbox,shift_date,shift)'));
  assert(sql.includes("status='abierta'"));
- assert(sql.includes("time '07:30'"));
- assert(sql.includes("time '19:30'"));
+ assert(shiftV030.includes("time '08:00'"));
+ assert(shiftV030.includes("time '20:00'"));
+ assert(shiftV030.includes("v_local::time<time '08:00'"));
 });
 test('El horario de noche sigue en la misma jornada después de medianoche',()=>{
  const shift=mod.currentShiftInfo(new Date('2026-11-10T06:00:00Z'));
  assert.equal(shift.shift,'noche');assert.equal(shift.date,'2026-11-09');
  assert.equal(mod.currentShiftInfo(new Date('2026-11-10T12:29:00Z')).shift,'noche');
- assert.equal(mod.currentShiftInfo(new Date('2026-11-10T12:30:00Z')).shift,'dia');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-10T12:30:00Z')).shift,'noche');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-10T12:59:00Z')).shift,'noche');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-10T13:00:00Z')).shift,'dia');
 });
+
+test('Cambio de turno exacto: 07:59 noche, 08:00 día, 19:59 día, 20:00 noche',()=>{
+ const v=t=>mod.currentShiftInfo(new Date(t));
+ assert.equal(v('2026-11-09T12:59:00Z').shift,'noche');
+ assert.equal(v('2026-11-09T12:59:00Z').date,'2026-11-08');
+ assert.equal(v('2026-11-09T13:00:00Z').shift,'dia');
+ assert.equal(v('2026-11-09T13:00:00Z').date,'2026-11-09');
+ assert.equal(v('2026-11-10T00:59:00Z').shift,'dia');
+ assert.equal(v('2026-11-10T01:00:00Z').shift,'noche');
+ assert.equal(v('2026-11-10T01:00:00Z').date,'2026-11-09');
+ assert.equal(v('2026-11-10T12:59:00Z').date,'2026-11-09');
+ assert.equal(v('2026-11-10T13:00:00Z').date,'2026-11-10');
+});
+test('Recepción, caja, backend y versión publicada comparten horario 08:00 a 20:00',()=>{
+ assert(app.includes('clock>=480&&clock<1200'));
+ assert(app.includes("'08:00–20:00':'20:00–08:00'"));
+ assert(cash.includes('minute>=480&&minute<1200'));
+ assert(cash.includes('minute<480?1:0'));
+ assert(cash.includes('Día · 08:00 a 20:00'));
+ assert(cash.includes('Noche · 20:00 a 08:00'));
+ assert(shiftV030.includes('v_shift:=case when v_local::time>=time'));
+ assert(cloud.includes('cash.js?v=0.30-turnos-0800-2000'));
+ assert(cloudPage.includes('0.30-turnos-0800-2000'));
+});
+
 test('Se suman cobros nocturnos dentro del rango real incluso pasada medianoche',()=>{
  const period={...session,closed_at:'2026-11-10T12:20:00Z'};
  const x=sum(period);
