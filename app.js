@@ -1797,7 +1797,7 @@
       ${select('Turno','shift',shiftOptions,'dia')}
       ${field('Código de transferencia (si aplica)','reference','',{placeholder:'Referencia bancaria'})}
       ${field('Encargado de turno','operator','',{placeholder:'Nombre del trabajador'})}
-      </div>${cashChangeFields('extra')}<div class="dashboard-notice">Si elige una habitación ocupada, el importe se agrega a la cuenta del huésped y <strong>no entra en caja hasta que se cobre</strong>. Si elige venta directa, se contabiliza inmediatamente por su forma de pago.</div><div class="form-actions"><button class="btn btn-primary" type="submit">Registrar consumo / venta</button></div></form></div></section>
+      </div>${cashChangeFields('extra')}<div class="dashboard-notice">Si elige una habitación ocupada o arrendada, el importe se agrega a su cuenta pendiente y <strong>no entra en caja hasta que se cobre</strong>. Si elige venta directa, se contabiliza inmediatamente por su forma de pago.</div><div class="form-actions"><button class="btn btn-primary" type="submit">Registrar consumo / venta</button></div></form></div></section>
       <aside class="panel"><div class="panel-head"><div><h2>Cargos adicionales</h2><p>Lavandería, helados sin precio definido y otros servicios</p></div></div><div class="panel-body"><form id="manual-extra-form"><div class="form-grid">
       ${field('Concepto','name','',{required:true,placeholder:'Ej. Lavandería, helado de coco, minibar...'})}
       ${select('Categoría','category',[['otros','Otros / lavandería'],['helados','Helados'],['bebidas','Bebidas'],['confiteria','Confitería'],['aseo','Aseo personal']],'otros')}
@@ -1808,7 +1808,7 @@
       ${field('Referencia de transferencia (si aplica)','reference','',{placeholder:'Referencia bancaria'})}
       ${field('Encargado','operator','',{placeholder:'Nombre del trabajador'})}
       </div>${cashChangeFields('manual')}<button class="btn btn-secondary section-gap" type="submit">Registrar cobro adicional</button></form></div></aside></div>
-    <section class="panel section-gap"><div class="panel-head"><div><h2>Registro de ventas</h2><p>${sold.length} operaciones · ${money(amount)} facturado, con cargos a habitaciones y ventas cobradas</p></div></div>${sold.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th>Destino</th><th>Categoría / producto</th><th>Cantidad</th><th>Importe</th><th>Cobro</th></tr></thead><tbody>${sold.slice(0,150).map(x=>`<tr><td>${timePretty(x.createdAt)}</td><td>${x.stayId?'Hab. '+esc(roomOf(stayOf(x.stayId)?.roomId)?.number||'—'):'Caja'}</td><td>${esc(catName(x.category))}<br><strong>${esc(x.productName)}</strong></td><td>${x.quantity}</td><td><strong>${money(x.price*x.quantity)}</strong></td><td>${x.stayId?'Pendiente en cuenta':x.method==='transferencia'?'Transferencia':'Efectivo'}</td></tr>`).join('')}</tbody></table></div>`:noRows('Aún no se registran ventas ni consumos.')}</section>`;
+    <section class="panel section-gap"><div class="panel-head"><div><h2>Registro de ventas</h2><p>${sold.length} operaciones · ${money(amount)} facturado, con cargos a habitaciones y ventas cobradas</p></div></div>${sold.length?`<div class="table-wrap"><table class="table"><thead><tr><th>Fecha</th><th>Destino</th><th>Categoría / producto</th><th>Cantidad</th><th>Importe</th><th>Cobro</th></tr></thead><tbody>${sold.slice(0,150).map(x=>`<tr><td>${timePretty(x.createdAt)}</td><td>${x.rentalRoomId?'Arrendada Hab. '+esc(roomOf(x.rentalRoomId)?.number||'—'):x.stayId?'Hab. '+esc(roomOf(stayOf(x.stayId)?.roomId)?.number||'—'):'Caja'}</td><td>${esc(catName(x.category))}<br><strong>${esc(x.productName)}</strong></td><td>${x.quantity}</td><td><strong>${money(x.price*x.quantity)}</strong></td><td>${x.stayId||x.rentalRoomId?'Pendiente en cuenta':x.method==='transferencia'?'Transferencia':'Efectivo'}</td></tr>`).join('')}</tbody></table></div>`:noRows('Aún no se registran ventas ni consumos.')}</section>`;
   }
 
   function renderStock(){
@@ -2251,51 +2251,102 @@
     },tender,paidAt,f.shift||'dia'));
     persist();render();toast('Pago de '+money(amount)+' registrado. Saldo restante '+money(dueOf(stay))+'.');
   }
+  function resolveExtraDestination(value){
+    const destination=String(value||'caja');
+    if(destination==='caja')return {stayId:'',rentalRoomId:'',credit:false};
+    if(isRentalDestination(destination)){
+      const room=rentalRoomFromDestination(destination);
+      return room?{stayId:'',rentalRoomId:room.id,credit:true}:
+        {error:'La habitación arrendada ya no está disponible para registrar consumos.'};
+    }
+    const stay=stayOf(destination);
+    return stay?.status==='activa'?{stayId:stay.id,rentalRoomId:'',credit:true}:
+      {error:'Debe seleccionar una habitación con estadía activa o arrendada.'};
+  }
   function appendExtra(f,product){
-    const q=Number(f.quantity),stayId=f.stayId==='caja'?'':f.stayId,stay=stayOf(stayId);
-    if(stayId&&(!stay||stay.status!=='activa')){toast('Debe seleccionar una habitación ocupada.','error');return false;}
-    if(!stayId&&!cashSessionAllowed())return false;
+    const target=resolveExtraDestination(f.stayId),q=Number(f.quantity);
+    if(target.error){toast(target.error,'error');return false;}
+    const {stayId,rentalRoomId,credit}=target;
+    if(!credit&&!cashSessionAllowed())return false;
     if(!Number.isInteger(q)||q<1||q>1000){toast('Cantidad inválida.','error');return false;}
-    if(product?.price===null||!Number.isFinite(Number(product?.price))||Number(product.price)<=0){toast('Este artículo no tiene tarifa definida; configúrela o utilice el formulario de cobro adicional.','error');return false;}
-    if(!['efectivo','transferencia'].includes(f.method)){toast('Seleccione forma de pago válida.','error');return false;}
-    if(!stayId&&f.method==='transferencia'&&!String(f.reference||'').trim()){toast('La transferencia necesita un código de referencia.','error');return false;}
+    if(product?.price===null||!Number.isFinite(Number(product?.price))||Number(product.price)<=0){
+      toast('El producto no tiene una tarifa definida. Configure su precio antes de agregarlo.','error');return false;
+    }
+    if(!credit&&!['efectivo','transferencia'].includes(f.method)){
+      toast('Seleccione forma de pago válida.','error');return false;
+    }
+    if(!credit&&f.method==='transferencia'&&!String(f.reference||'').trim()){
+      toast('La transferencia necesita un código de referencia.','error');return false;
+    }
     const nevera=locationStock(product,'nevera');
     if(nevera!==null&&nevera<q){toast('No hay suficientes unidades de '+product.name+' en nevera. Reponga desde bodega.','error');return false;}
     if(nevera===null&&product.stock!==null&&product.stock<q){toast('No hay existencias suficientes de '+product.name+'.','error');return false;}
-    const createdAt=new Date().toISOString();
-    const tender=stayId?{received:asMoney(product.price*q),change:0,status:'no_aplica'}:resolveTendered(f.cashTendered,f.method,asMoney(product.price*q),f.changeStatus);
+    const createdAt=new Date().toISOString(),shift=receptionShift();
+    // Un cargo pendiente no recibe efectivo y nunca se registra como venta de caja.
+    const tender=credit?{received:0,change:0,status:'no_aplica'}:
+      resolveTendered(f.cashTendered,f.method,asMoney(product.price*q),f.changeStatus);
     if(tender.error){toast(tender.error,'error');return false;}
-    const e=paidCashRecord({id:uid('extra'),stayId,productId:product.id,productName:product.name,category:product.category||'otros',quantity:q,price:asMoney(product.price),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt},tender,createdAt,f.shift||'dia');
+    const e=paidCashRecord({
+      id:uid('extra'),stayId,rentalRoomId,productId:product.id,productName:product.name,
+      category:product.category||'otros',quantity:q,price:asMoney(product.price),
+      method:credit?'pendiente':f.method,reference:credit?'':String(f.reference||'').trim(),
+      shift,operator:String(f.operator||'').trim(),createdAt
+    },tender,createdAt,shift);
     db.extras.push(e);
     if(nevera!==null){product.stockNevera=nevera-q;syncProductStock(product);}
     else if(product.stock!==null)product.stock-=q;
-    if(nevera!==null||product.stock!==null)db.stockMoves.push({id:uid('stock'),productId:product.id,productName:product.name,location:'nevera',mode:'venta',quantity:q,shift:f.shift||'dia',operator:e.operator,createdAt,note:stayId?'Cargo a habitación':'Venta directa'});
+    if(nevera!==null||product.stock!==null)
+      db.stockMoves.push({id:uid('stock'),productId:product.id,productName:product.name,location:'nevera',
+        mode:'venta',quantity:q,shift,operator:e.operator,createdAt,
+        note:rentalRoomId?'Cargo a habitación arrendada':credit?'Cargo a habitación':'Venta directa'});
     persist();return true;
   }
   function processExtra(){
     const f=readForm('extra-form'),product=productOf(f.productId);
     if(!product){toast('Seleccione un producto.','error');return;}
-    if(appendExtra(f,product)){render();toast('Venta registrada: '+product.name+'.');}
+    if(appendExtra(f,product)){
+      const target=resolveExtraDestination(f.stayId);
+      render();
+      toast(target.credit?'Producto cargado a la habitación como pendiente: '+product.name+'.':
+        'Venta registrada: '+product.name+'.');
+    }
   }
-  function processManualExtra(){
-    const f=readForm('manual-extra-form'),name=String(f.name||'').trim(),amount=Number(f.amount),stayId=f.stayId==='caja'?'':f.stayId;
-    if(!name||name.length>80||!Number.isFinite(amount)||amount<=0||amount>100000){toast('Complete un concepto y un importe válido.','error');return;}
-    if(stayId&&stayOf(stayId)?.status!=='activa'){toast('Seleccione una habitación ocupada.','error');return;}
-    if(!stayId&&!cashSessionAllowed())return;
-    if(!stayId&&f.method==='transferencia'&&!String(f.reference||'').trim()){toast('La transferencia necesita referencia.','error');return;}
-    const tender=stayId?{received:asMoney(amount),change:0,status:'no_aplica'}:resolveTendered(f.cashTendered,f.method,amount,f.changeStatus);
+  function processManualExtra(formId='manual-extra-form'){
+    const f=readForm(formId),name=String(f.name||'').trim(),amount=Number(f.amount);
+    const target=resolveExtraDestination(f.stayId);
+    if(target.error){toast(target.error,'error');return;}
+    const {stayId,rentalRoomId,credit}=target;
+    if(!name||name.length>80||!Number.isFinite(amount)||amount<=0||amount>100000){
+      toast('Complete un concepto y un importe válido.','error');return;
+    }
+    if(!credit&&!cashSessionAllowed())return;
+    if(!credit&&!['efectivo','transferencia'].includes(f.method)){
+      toast('Seleccione una forma de pago válida.','error');return;
+    }
+    if(!credit&&f.method==='transferencia'&&!String(f.reference||'').trim()){
+      toast('La transferencia necesita referencia.','error');return;
+    }
+    const tender=credit?{received:0,change:0,status:'no_aplica'}:
+      resolveTendered(f.cashTendered,f.method,amount,f.changeStatus);
     if(tender.error){toast(tender.error,'error');return;}
-    const soldAt=new Date().toISOString();
-    db.extras.push(paidCashRecord({id:uid('extra'),stayId,productId:'manual',productName:name,category:CATEGORIES[f.category]?f.category:'otros',quantity:1,price:asMoney(amount),method:stayId?'pendiente':f.method,reference:stayId?'':String(f.reference||'').trim(),shift:f.shift||'dia',operator:String(f.operator||'').trim(),createdAt:soldAt},tender,soldAt,f.shift||'dia'));
-    persist();render();toast('Cargo adicional registrado.');
+    const soldAt=new Date().toISOString(),shift=receptionShift();
+    db.extras.push(paidCashRecord({id:uid('extra'),stayId,rentalRoomId,productId:'manual',productName:name,
+      category:CATEGORIES[f.category]?f.category:'otros',quantity:1,price:asMoney(amount),
+      method:credit?'pendiente':f.method,reference:credit?'':String(f.reference||'').trim(),
+      shift,operator:String(f.operator||'').trim(),createdAt:soldAt},tender,soldAt,shift));
+    persist();render();
+    toast(credit?'Cargo adicional agregado a la cuenta pendiente.':'Cobro adicional registrado.');
   }
   function processRoomExtra(){
-  const f=readForm('room-extra-form'),stay=stayOf(f.stayId),product=productOf(f.productId);
-  if(!stay||stay.status!=='activa'){toast('La habitación ya no está ocupada.','error');return;}
-  if(!product){toast('Seleccione un producto para agregar a la habitación.','error');return;}
-  const success=appendExtra({...f,method:'efectivo',stayId:stay.id},product);
-  if(success){render();toast('Consumo cargado a Hab. '+(roomOf(stay.roomId)?.number||'—')+': '+product.name+'. No se ha cobrado aún.');}
-}
+    const f=readForm('room-extra-form'),product=productOf(f.productId);
+    if(!product){toast('Seleccione un producto para agregar a la habitación.','error');return;}
+    const target=resolveExtraDestination(f.stayId);
+    if(target.error||!target.credit){toast(target.error||'Seleccione una habitación válida.','error');return;}
+    if(appendExtra({...f,method:'efectivo'},product)){
+      const room=target.rentalRoomId?roomOf(target.rentalRoomId):roomOf(stayOf(target.stayId)?.roomId);
+      render();toast('Consumo cargado a Hab. '+(room?.number||'—')+': '+product.name+'. Pendiente de cobro.');
+    }
+  }
   function processBreakfast(){
     const f=readForm('room-breakfast-form'),stay=stayOf(f.stayId),quantity=Number(f.quantity);
     if(!stay||stay.status!=='activa'){toast('La habitación ya no tiene una estadía activa.','error');return;}
@@ -2799,7 +2850,7 @@
   });
   document.addEventListener('submit',e=>{
     const id=e.target?.id;if(!id)return;
-    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-barcode-form':()=>applyRoomBarcode(document.getElementById('room-barcode-manual')?.value),'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
+    const handlers={'checkin-form':processCheckin,'reservation-form':processReservation,'guest-form':processGuest,'payment-form':processPayment,'room-extra-form':processRoomExtra,'room-person-form':processAdditionalPerson,'room-breakfast-form':processBreakfast,'room-barcode-form':()=>applyRoomBarcode(document.getElementById('room-barcode-manual')?.value),'room-extension-form':processExtendStay,'finalize-form':processFinalSettlement,'extra-form':processExtra,'manual-extra-form':processManualExtra,'rental-manual-extra-form':()=>processManualExtra('rental-manual-extra-form'),'stock-form':processStock,'cash-out-form':processCashOut,'cash-close-form':processCashClose,'rates-form':processRates,'products-form':processProducts,'new-product-form':processNewProduct,'new-room-form':processNewRoom,'room-inventory-form':processInventory};
     if(id.startsWith('invoice-issued-')){e.preventDefault();processInvoiceIssued(id.slice('invoice-issued-'.length));return;}
     if(handlers[id]){e.preventDefault();handlers[id]();}
   });
