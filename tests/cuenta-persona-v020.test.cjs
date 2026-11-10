@@ -5,7 +5,7 @@ const tail='  render();\n})();';
 assert(original.trimEnd().endsWith(tail),'No coincide el cierre del módulo');
 const exposed=original.trimEnd().slice(0,-tail.length)+
  '\nwindow.__v20={defaults,receptionShiftAt,automaticShiftHint,renderAdditionalPersonSection,processAdditionalPerson,renderRoomAccount,stayHistoryEvents,totalOf,dueOf,setDB:x=>{db=x;}};\n})();';
-const clock={value:'2026-11-08T12:30:00.000Z'};
+const clock={value:'2026-11-08T13:00:00.000Z'};
 const RealDate=Date;
 class FakeDate extends RealDate{
  constructor(...args){super(...(args.length?args:[clock.value]));}
@@ -75,7 +75,7 @@ test('Fecha y turno se muestran con la fecha de El Coca, no la fecha UTC',()=>{
  const html=api.automaticShiftHint();
  assert(html.includes('datetime="2026-11-08"'));
  assert(html.includes('Noche'));
- assert(html.includes('19:30–07:30'));
+ assert(html.includes('20:00–08:00'));
  assert(!html.includes('datetime="2026-11-09"'));
 });
 test('El indicador actualiza la fecha cuando cambia el día en Ecuador',()=>{
@@ -84,11 +84,11 @@ test('El indicador actualiza la fecha cuando cambia el día en Ecuador',()=>{
  assert(html.includes('datetime="2026-11-09"'));
  assert(html.includes('Noche'));
 });
-test('El turno de día a las 07:30 coincide con la fecha del indicador',()=>{
- clock.value='2026-11-09T12:30:00.000Z';
+test('El turno de día a las 08:00 coincide con la fecha del indicador',()=>{
+ clock.value='2026-11-09T13:00:00.000Z';
  const html=api.automaticShiftHint();
  assert(html.includes('datetime="2026-11-09"'));
  assert(html.includes('Día'));
- assert(html.includes('07:30–19:30'));
+ assert(html.includes('08:00–20:00'));
 });
 if(fails)process.exitCode=1;
