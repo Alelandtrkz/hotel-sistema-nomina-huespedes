@@ -20,7 +20,7 @@ const document={
  activeElement:null
 };
 const window={confirm(){return true},scrollTo(){},
- hotelCash:{canOperate(){return false},active(){return null}}};
+ hotelCash:{canOperate(){return false},active(){return null},bind(){}}};
 class FakeFormData{constructor(el){this.fields=el.data||{}}entries(){return Object.entries(this.fields)}}
 const sandbox={window,document,Date,Intl,Number,Math,Array,String,Object,JSON,RegExp,
  localStorage:{getItem(){return null},setItem(){}},FormData:FakeFormData,
