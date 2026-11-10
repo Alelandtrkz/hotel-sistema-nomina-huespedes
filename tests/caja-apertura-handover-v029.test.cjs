@@ -2,7 +2,8 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const read=p=>fs.readFileSync(path.resolve(__dirname,'..',p),'utf8');
 const app=read('app.js'),cloud=read('cloud.js'),cash=read('cash.js'),sql=read('supabase/migrations/20261109_cash_shift_open_handover_v029.sql'),
-  sync=read('supabase/migrations/20261109_cash_session_version_sync_v029.sql'),css=read('styles.css');
+  sync=read('supabase/migrations/20261109_cash_session_version_sync_v029.sql'),
+  shiftSql=read('supabase/migrations/20261109_cash_shifts_0800_2000_v030.sql'),css=read('styles.css');
 new Function(app);new Function(cloud);new Function(cash);
 let failed=0;
 function test(name,fn){
@@ -14,7 +15,7 @@ nodes['app-view']=root;
 const store={opened:0,closed:0,payload:null};
 const sessions=[{
  id:'s1',cashbox:'recepcion',shift_date:'2026-11-09',shift:'noche',status:'abierta',
- opened_at:'2026-11-10T00:30:00.000Z',opening_operator:'Recepcionista',
+ opened_at:'2026-11-10T01:00:00.000Z',opening_operator:'Recepcionista',
  opening_float:25,expected_from_previous:null,opening_variance:0
 }];
 const api={
@@ -59,14 +60,17 @@ test('Sólo una caja abierta por recepción, asignada al turno canónico',()=>{
  assert(sql.includes('hotel_one_open_cashbox'));
  assert(sql.includes('unique(cashbox,shift_date,shift)'));
  assert(sql.includes("status='abierta'"));
- assert(sql.includes("time '07:30'"));
- assert(sql.includes("time '19:30'"));
+ assert(shiftSql.includes("time '08:00'"));
+ assert(shiftSql.includes("time '20:00'"));
 });
 test('El horario de noche sigue en la misma jornada después de medianoche',()=>{
  const shift=mod.currentShiftInfo(new Date('2026-11-10T06:00:00Z'));
  assert.equal(shift.shift,'noche');assert.equal(shift.date,'2026-11-09');
- assert.equal(mod.currentShiftInfo(new Date('2026-11-10T12:29:00Z')).shift,'noche');
- assert.equal(mod.currentShiftInfo(new Date('2026-11-10T12:30:00Z')).shift,'dia');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-10T12:59:00Z')).shift,'noche');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-10T13:00:00Z')).shift,'dia');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-11T00:59:00Z')).shift,'dia');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-11T01:00:00Z')).shift,'noche');
+ assert.equal(mod.currentShiftInfo(new Date('2026-11-11T01:00:00Z')).date,'2026-11-10');
 });
 test('Se suman cobros nocturnos dentro del rango real incluso pasada medianoche',()=>{
  const period={...session,closed_at:'2026-11-10T12:20:00Z'};
@@ -128,8 +132,8 @@ test('La apertura en caja cerrada requiere conteo físico de sueltos',()=>{
 test('Las operaciones con dinero quedan bloqueadas hasta abrir caja y fuera del turno',()=>{
  mod.state.sessions=[];
  assert.equal(mod.canOperate(),false);
- mod.state.sessions=[session];
- // La jornada de la prueba es de otro día, así que tampoco se permite operar.
+ mod.state.sessions=[{...session,shift_date:'2020-01-01'}];
+ // Fecha deliberadamente distinta para que el test no dependa del reloj de CI.
  assert.equal(mod.canOperate(),false);
  assert(app.includes('if(!cashSessionAllowed())return;'));
  assert(app.includes("if(!stayId&&!cashSessionAllowed())return false;"));
@@ -141,7 +145,7 @@ test('Se mantiene el cierre histórico sin reescribirlo',()=>{
  assert(!cash.includes('db.closures.push'));
 });
 test('El navegador actualiza cash.js antes del app.js y evita claves privadas',()=>{
- assert(cloud.indexOf('cashScript.onload=function()')<cloud.indexOf('script.src="./app.js?v=0.29-apertura"'));
+ assert(cloud.indexOf('cashScript.onload=function()')<cloud.indexOf('script.src="./app.js?v=0.30-turnos"'));
  assert(!/service_role\s*[:=]\s*['"]/.test(cloud));
  assert(css.includes('.cash-modal-overlay'));
 });
