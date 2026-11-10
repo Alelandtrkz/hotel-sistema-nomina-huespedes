@@ -1,4 +1,4 @@
-/* Hotel Unicornio v0.29: caja por sesión (07:30–19:30 / 19:30–07:30).
+/* Hotel Unicornio v0.29: caja por sesión (08:00–20:00 / 20:00–08:00).
    Fondo de cambio = efectivo físico que se SUMA al cierre; NO es una venta. */
 (function(){
 "use strict";
@@ -14,9 +14,9 @@ function currentShiftInfo(instant=new Date()){
   const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"America/Guayaquil",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(instant);
   const get=k=>parts.find(p=>p.type===k)?.value||"00";
   const minute=Number(get("hour"))*60+Number(get("minute"));
-  const shift=minute>=450&&minute<1170?"dia":"noche";
-  const date=new Date(Date.UTC(Number(get("year")),Number(get("month"))-1,Number(get("day"))-(minute<450?1:0)));
-  return {shift,date:date.toISOString().slice(0,10),label:shift==="dia"?"Día · 07:30 a 19:30":"Noche · 19:30 a 07:30"};
+  const shift=minute>=480&&minute<1200?"dia":"noche";
+  const date=new Date(Date.UTC(Number(get("year")),Number(get("month"))-1,Number(get("day"))-(minute<480?1:0)));
+  return {shift,date:date.toISOString().slice(0,10),label:shift==="dia"?"Día · 08:00 a 20:00":"Noche · 20:00 a 08:00"};
 }
 const active=()=>state.sessions.find(s=>s.status==="abierta")||null;
 const priorClosed=()=>state.sessions.find(s=>s.status==="cerrada")||null;
