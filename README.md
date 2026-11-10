@@ -1,3 +1,17 @@
+# Hotel Unicornio v0.30 — Horarios de caja 08:00–20:00
+
+**Horario vigente desde v0.30 (America/Guayaquil / El Coca):**
+- **Día:** 08:00 inclusive hasta 20:00 exclusive.
+- **Noche:** 20:00 inclusive hasta las 08:00 del día siguiente (exclusive). Entre 00:00 y 07:59 la jornada nocturna corresponde a la fecha del día anterior.
+- El cálculo automático de turno en **recepción**, **cuentas**, **cobros** y **apertura/cierre de caja** utiliza los mismos límites horarios.
+- En Supabase, la RPC `hotel_cash_open` asigna el mismo turno y fecha de jornada; la migración solo sustituye esa función, **sin cambiar sesiones activas, saldos ni cierres históricos**.
+- **Sin cambios en la contabilidad del fondo de vuelto:** `efectivo esperado = fondo inicial + cobros en efectivo − vueltos entregados − gastos y retiros`. El fondo no es una venta.
+- Cerrar caja sigue requiriendo el arqueo manual y la confirmación del fondo entregado. Una caja abierta que atraviesa las 20:00 deberá cerrarse antes de iniciar la nueva apertura nocturna.
+
+Migración: `supabase/migrations/20261109_cash_shifts_0800_2000_v030.sql`. Pruebas de límites: `tests/cuenta-compacta-v019.test.cjs`, `tests/cuenta-persona-v020.test.cjs` y `tests/caja-apertura-handover-v029.test.cjs`.
+
+---
+
 # Hotel Unicornio v0.29 — Apertura, arqueo y cierre de caja con fondo de cambio
 
 El módulo **Cierre de caja** pasa a administrar **una sesión de caja por turno**. Al no haber sesión activa, presenta **Abrir caja**: el encargado cuenta físicamente los **sueltos destinados a dar vuelto**, registra el importe y observaciones. El turno se asigna automáticamente según **America/Guayaquil**, de 07:30 a 19:30 (día) y de 19:30 a 07:30 (noche). Las horas posteriores a medianoche antes de las 07:30 pertenecen a la jornada nocturna del día anterior.
