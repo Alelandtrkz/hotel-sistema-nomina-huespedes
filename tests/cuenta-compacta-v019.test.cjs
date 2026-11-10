@@ -8,8 +8,8 @@ const source=original.trimEnd().slice(0,-tail.length)+
  'extensionQuote,processBreakfast,processAdditionalPerson,processExtendStay,totalOf,dueOf,setDB:x=>{db=x;},getDB:()=>db};\n})();';
 const RealDate=Date;
 class FixedDate extends RealDate{
- constructor(...args){super(...(args.length?args:['2026-11-08T12:30:00.000Z']))}
- static now(){return RealDate.parse('2026-11-08T12:30:00.000Z')}
+ constructor(...args){super(...(args.length?args:['2026-11-08T13:00:00.000Z']))}
+ static now(){return RealDate.parse('2026-11-08T13:00:00.000Z')}
 }
 const records=[],elements={
  toasts:{append(node){records.push(node.textContent)}},
@@ -41,18 +41,18 @@ function makeStay(){
  db.guests=[{id:'fake-guest-v19',firstName:'PRUEBA',lastName:'OPERACIONES',phone:'0990000000',document:'0102030400'}];
  db.stays=[{id:'fake-stay-v19',guestId:'fake-guest-v19',roomId:room.id,roomRate:20,roomTotal:40,
  arrival:'2026-11-08',departure:'2026-11-10',breakfast:'sin',status:'activa',advance:0,payments:[],
- createdAt:'2026-11-08T12:30:00.000Z'}];
+ createdAt:'2026-11-08T13:00:00.000Z'}];
  api.setDB(db);
  return {db,room,stay:db.stays[0]};
 }
-check('Turno Día inicia exactamente a 07:30 hora de El Coca',()=>{
- assert.equal(api.receptionShiftAt(new RealDate('2026-11-08T12:29:00Z')),'noche');
- assert.equal(api.receptionShiftAt(new RealDate('2026-11-08T12:30:00Z')),'dia');
+check('Turno Día inicia exactamente a 08:00 hora de El Coca',()=>{
+ assert.equal(api.receptionShiftAt(new RealDate('2026-11-08T12:59:00Z')),'noche');
+ assert.equal(api.receptionShiftAt(new RealDate('2026-11-08T13:00:00Z')),'dia');
 });
-check('Turno Día termina a las 19:30; fuera del rango es Noche',()=>{
- assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T00:29:00Z')),'dia');
- assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T00:30:00Z')),'noche');
- assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T12:29:00Z')),'noche');
+check('Turno Día termina a las 20:00; fuera del rango es Noche',()=>{
+ assert.equal(api.receptionShiftAt(new RealDate('2026-11-10T00:59:00Z')),'dia');
+ assert.equal(api.receptionShiftAt(new RealDate('2026-11-10T01:00:00Z')),'noche');
+ assert.equal(api.receptionShiftAt(new RealDate('2026-11-09T12:59:00Z')),'noche');
  assert.equal(api.receptionShift(),'dia');
 });
 check('Desayuno compacto incluye botones Lucide y ya no selector manual del turno',()=>{
@@ -75,7 +75,7 @@ check('Persona adicional sin campo de nombre y con responsable y turno fechados'
  assert(html.includes('data-target="room-person-nights"'));
  assert(html.includes('Turno automático'));
  assert(html.includes('datetime="2026-11-08"'));
- assert(html.includes('07:30–19:30'));
+ assert(html.includes('08:00–20:00'));
  assert(!html.includes('id="room-person-shift"'));
 });
 check('Extensión recupera la tarjeta de fechas sobre el control de noches',()=>{
