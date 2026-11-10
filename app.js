@@ -1624,12 +1624,12 @@
   }
 
   // Turnos según el reloj de Hotel Unicornio (El Coca, Ecuador), independientemente de la zona del teléfono.
-  // Día: desde las 07:30 inclusive hasta las 19:30 exclusive. Fuera de ese horario: Noche.
+  // Día: desde las 08:00 inclusive hasta las 20:00 exclusive. Fuera de ese horario: Noche.
   function receptionShiftAt(instant=new Date()){
     const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Guayaquil',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(instant);
     const hours=Number(parts.find(p=>p.type==='hour')?.value),minutes=Number(parts.find(p=>p.type==='minute')?.value);
     const clock=hours*60+minutes;
-    return clock>=450&&clock<1170?'dia':'noche';
+    return clock>=480&&clock<1200?'dia':'noche';
   }
   const receptionShift=()=>receptionShiftAt(new Date());
   function automaticShiftHint(){
@@ -1642,7 +1642,7 @@
     return `<div class="reception-auto-shift" role="status" aria-label="Turno de recepción y fecha actual de El Coca">
       <span>Turno automático</span>
       <div class="reception-auto-shift-current"><strong>${shift==='dia'?'Día':'Noche'}</strong><time datetime="${isoDate}">${esc(label)}</time></div>
-      <small>${shift==='dia'?'07:30–19:30':'19:30–07:30'} · El Coca</small>
+      <small>${shift==='dia'?'08:00–20:00':'20:00–08:00'} · El Coca</small>
     </div>`;
   }
   // SVGs reproducen la geometría Plus y Minus de Lucide; no requieren librerías externas.
