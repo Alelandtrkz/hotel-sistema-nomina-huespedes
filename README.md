@@ -1,3 +1,17 @@
+# Hotel Unicornio v0.31 — Corte de caja de prueba a las 23:00 y cargos a habitaciones arrendadas
+
+**Horario experimental para pruebas (zona horaria America/Guayaquil):** turno **Día: 08:00 a 23:00** y **Noche: 23:00 a 08:00** del día siguiente. Entre 00:00 y 07:59, la jornada nocturna corresponde a la fecha del día anterior. La misma regla se utiliza en el identificador automático del turno de recepción, apertura de caja en Supabase y pantalla de arqueo. Las sesiones ya abiertas y los cierres anteriores no se modifican.
+
+**Habitaciones arrendadas:** las habitaciones con tipo y estado \`arrendada\` ahora tienen una **cuenta de consumos pendientes** al pulsar su tarjeta en Habitaciones. Desde ahí se puede buscar o escanear un producto, indicar unidades, registrar un agua u otro artículo con precio, o agregar cargos manuales de lavandería y otros servicios. También aparecen como destino \`Arrendada · Hab. XX (a cuenta)\` en **Varios / ventas**. Cada cargo se registra en el historial de ventas con \`rentalRoomId\`, \`stayId\` vacío y método \`pendiente\`; se vincula al identificador de la habitación aunque cambie su numeración. **No se recibe efectivo al anotarlo** ni se agrega a caja hasta un cobro real.
+
+Los cargos se incluyen en el saldo de la habitación arrendada y en el filtro de habitaciones por cobrar. Su tipo arrendado permanece fuera del inventario disponible y de las estadías de hospedaje. El inventario del producto se descuenta del stock conocido de Nevera usando las reglas existentes (sin inventar cantidades cuando no existe conteo). No se puede cambiar a otro tipo de habitación mientras queden cargos del arrendatario pendientes de conciliación.
+
+**Limitación:** esta fase registra cargos pendientes de arrendatarios, pero **no implementa aún un proceso de cobro/abono específico para estas cuentas**. No marque como pagados consumos sin haber implementado la conciliación. Las habitaciones hoteleras con estadía activa y la venta directa conservan sus operaciones previas.
+
+**Migración:** \`supabase/migrations/20261110_caja_hasta_2300_v031.sql\` (solo cambia la función \`hotel_cash_open\`). **Pruebas:** \`tests/cargos-habitaciones-arrendadas-v031.test.cjs\` y regresiones de turnos de caja.
+
+---
+
 # Hotel Unicornio v0.30 — Horarios de caja 08:00–20:00
 
 **Horario vigente desde v0.30 (America/Guayaquil / El Coca):**
