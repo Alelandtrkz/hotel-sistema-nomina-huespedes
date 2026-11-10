@@ -321,10 +321,10 @@
         var adminScript=document.createElement("script");adminScript.src="./admin.js?v=0.28-gerencial";
         adminScript.onerror=function(){status("No se pudo cargar el módulo administrativo",true);};
         adminScript.onload=function(){
-          var cashScript=document.createElement("script");cashScript.src="./cash.js?v=0.29-apertura";
+          var cashScript=document.createElement("script");cashScript.src="./cash.js?v=0.30-turnos-0800-2000";
           cashScript.onerror=function(){status("No se pudo cargar el control de apertura y cierre de caja",true);};
           cashScript.onload=function(){
-            var script=document.createElement("script");script.src="./app.js?v=0.29-apertura";
+            var script=document.createElement("script");script.src="./app.js?v=0.30-turnos-0800-2000";
             script.onerror=function(){status("No se pudo cargar la aplicación",true);};
             document.body.appendChild(script);
           };
