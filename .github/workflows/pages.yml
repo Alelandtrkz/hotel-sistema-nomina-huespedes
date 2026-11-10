@@ -50,6 +50,7 @@ jobs:
           node tests/varios-zonas-v027.test.cjs
           node tests/admin-gerencial-v028.test.cjs
           node tests/caja-apertura-handover-v029.test.cjs
+          node tests/cargos-habitaciones-arrendadas-v031.test.cjs
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Preparar archivos estáticos
