@@ -357,13 +357,13 @@
   const roomStateLabel=s=>({disponible:'Disponible',ocupada:'Ocupada',limpieza:'Pend. limpieza',arrendada:'Arrendada / fuera de operación'})[s]||'Desconocido';
   const statusTag=s=>tag(roomStateLabel(s),s==='disponible'?'success':s==='ocupada'?'danger':s==='arrendada'?'':'warning');
   const roomTile=r=>{
-    const stay=activeStays().find(s=>s.roomId===r.id),due=stay?dueOf(stay):0,owed=stay?pendingChangeOf(stay):0;
-    const hasDue=r.status==='ocupada'&&due>0;
+    const stay=activeStays().find(s=>s.roomId===r.id),due=stay?dueOf(stay):r.status==='arrendada'?rentalDueOf(r.id):0,owed=stay?pendingChangeOf(stay):0;
+    const hasDue=(r.status==='ocupada'||r.status==='arrendada')&&due>0;
     return `<button class="room-tile ${esc(r.status)} ${hasDue?'occupied-due':''}" data-action="select-room" data-id="${esc(r.id)}" title="Ver cuenta de habitación ${esc(r.number)}">
-      <div class="room-topline"><span class="room-no">${esc(r.number)}</span>${stay?`<span class="room-due-amount ${hasDue?'unpaid':''}">${hasDue?`Por cobrar<br><strong>${money(due)}</strong>`:`Saldo ${money(0)}`}</span>`:''}</div>
+      <div class="room-topline"><span class="room-no">${esc(r.number)}</span>${stay||r.status==='arrendada'&&hasDue?`<span class="room-due-amount ${hasDue?'unpaid':''}">${hasDue?`Por cobrar<br><strong>${money(due)}</strong>`:`Saldo ${money(0)}`}</span>`:''}</div>
       <div class="room-type">${esc(LABELS[r.type])}</div>
       ${stay?`<div class="room-tariff">Tarifa ${money(stay.roomRate)} / noche</div>`:''}
-      <div class="room-badges">${hasDue?'<span class="room-badge occupied">Ocupada</span><span class="room-badge owing">Por cobrar</span>':`<span class="room-badge ${esc(r.status)}">${roomStateLabel(r.status)}</span>`}
+      <div class="room-badges">${hasDue?'<span class="room-badge '+(r.status==='arrendada'?'arrendada':'occupied')+'">'+(r.status==='arrendada'?'Arrendada':'Ocupada')+'</span><span class="room-badge owing">Por cobrar</span>':`<span class="room-badge ${esc(r.status)}">${roomStateLabel(r.status)}</span>`}
       ${owed>0?`<span class="room-badge change-pending">Vuelto ${money(owed)}</span>`:''}</div>
     </button>`;
   };
@@ -1085,13 +1085,15 @@
       return p.status===ui.roomFilter;
     }
     if(ui.roomFilter==='reservadas')return reservedIds.has(r.id);
-    if(ui.roomFilter==='por-cobrar')return r.status==='ocupada'&&debtIds.has(r.id);
+    if(ui.roomFilter==='por-cobrar')return r.status==='ocupada'&&debtIds.has(r.id)||r.status==='arrendada'&&rentalDueOf(r.id)>0;
     return r.status===ui.roomFilter;
   });
   const selected=roomOf(ui.selectedRoomId);
   const stay=selected?activeStays().find(st=>st.roomId===selected.id):null;
-  const unpaid=activeStays().filter(st=>dueOf(st)>0),totalReceivable=asMoney(unpaid.reduce((n,st)=>n+dueOf(st),0));
-  const filteredTitle=dateMode?`Vista prevista para ${datePretty(date)}`:`${db.rooms.length} habitaciones · ${unpaid.length} con saldo por cobrar · total pendiente ${money(totalReceivable)}`;
+  const unpaid=activeStays().filter(st=>dueOf(st)>0);
+  const rentalOwed=db.rooms.filter(r=>r.status==='arrendada'&&rentalDueOf(r.id)>0);
+  const totalReceivable=asMoney(unpaid.reduce((n,st)=>n+dueOf(st),0)+rentalOwed.reduce((n,r)=>n+rentalDueOf(r.id),0));
+  const filteredTitle=dateMode?`Vista prevista para ${datePretty(date)}`:`${db.rooms.length} habitaciones · ${unpaid.length+rentalOwed.length} con saldo por cobrar (incluye arrendadas) · total pendiente ${money(totalReceivable)}`;
   return head('Control operativo','Habitaciones','Toque una habitación para abrir su cuenta, revisar cargos y registrar pagos.',btn('Nuevo ingreso','go-ingreso'))+
     renderRoomsOverview()+
     `<section class="panel" id="room-map">
